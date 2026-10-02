@@ -1,0 +1,11 @@
+// Schema-only until the bot phase: no database is provisioned yet.
+// Models (sellers, garments, try-on renders, orders, consent) land with the bot.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
