@@ -1,0 +1,77 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { OUT, type ResultRecord } from "./store";
+
+const COLUMNS = [
+  "garment",
+  "label",
+  "label_category",
+  "category_sent",
+  "photo_type",
+  "person",
+  "person_file",
+  "framing",
+  "status",
+  "latency_s",
+  "units_consumed",
+  "units_balance_delta",
+  "error",
+  "error_message",
+  "bad_render_flag",
+  "clothing_region_changed_pct",
+  "aspect_changed",
+  "output_path",
+  "output_w",
+  "output_h",
+  "task_id",
+  "resumed",
+  "started_at",
+  "finished_at",
+] as const;
+
+function cell(v: unknown): string {
+  if (v === undefined || v === null) return "";
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+
+/** Rewrites results.csv from every cached try-on record. */
+export function writeResultsCsv(records: ResultRecord[]): string {
+  const rows = records
+    .filter((r) => r.job.kind === "tryon")
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+    .map((r) => {
+      const j = r.job.kind === "tryon" ? r.job : undefined!;
+      const row: Record<(typeof COLUMNS)[number], unknown> = {
+        garment: j.garmentFile,
+        label: j.label,
+        label_category: j.labelCategory,
+        category_sent: j.category,
+        photo_type: j.photoType,
+        person: j.person,
+        person_file: j.personFile,
+        framing: j.framing,
+        status: r.status,
+        latency_s: r.latencySec,
+        units_consumed: r.units,
+        units_balance_delta: r.unitsBalanceDelta,
+        error: r.error,
+        error_message: r.errorMessage,
+        bad_render_flag: r.badRender ? (r.badRender.flagged ? "yes" : "no") : "",
+        clothing_region_changed_pct: r.badRender ? (r.badRender.changedPct * 100).toFixed(1) : "",
+        aspect_changed: r.badRender ? (r.badRender.aspectChanged ? "yes" : "no") : "",
+        output_path: r.outputPath,
+        output_w: r.outputWidth,
+        output_h: r.outputHeight,
+        task_id: r.taskId,
+        resumed: r.resumed ? "yes" : "",
+        started_at: r.startedAt,
+        finished_at: r.finishedAt,
+      };
+      return COLUMNS.map((c) => cell(row[c])).join(",");
+    });
+  mkdirSync(OUT, { recursive: true });
+  const file = path.join(OUT, "results.csv");
+  writeFileSync(file, [COLUMNS.join(","), ...rows].join("\n") + "\n");
+  return file;
+}
