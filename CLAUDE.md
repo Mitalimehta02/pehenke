@@ -90,6 +90,13 @@ spec). If something isn't in the spec, say so instead of guessing.
   matched the cost table exactly.
 - Verified live costs: cloth-v3 = 2 units per result image;
   skin-tone-analysis = 20 units per result.
+- Verified live: **try-on output is repeatable and every repeat is charged.**
+  The same person + garment rendered 5 times (3 on the same file IDs, 2 on
+  freshly uploaded new file IDs) gave byte-identical images, and each call
+  cost 2 units. So: the app must cache results by content hash (person
+  image hash + garment image hash + category) and never re-request a render
+  it already has. Re-rendering also can't "fix" a bad output; change an
+  input instead (e.g. ask for a full-body photo).
 
 ## Skin tone: expensive, call once per buyer
 

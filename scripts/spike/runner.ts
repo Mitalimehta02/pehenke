@@ -103,12 +103,12 @@ export class BudgetStop extends Error {}
 
 // ---------------- uploads ----------------
 
-async function uploadPrepared(client: YouCamClient, feature: Feature, dir: string, file: string): Promise<{ fileId: string; prepared: Uint8Array }> {
+async function uploadPrepared(client: YouCamClient, feature: Feature, dir: string, file: string, fresh = false): Promise<{ fileId: string; prepared: Uint8Array }> {
   const spec = feature === "cloth-v3" ? CLOTHES_V3_IMAGE : SKIN_TONE_IMAGE;
   const prepared = await prepareImage(readFileSync(path.join(dir, file)), file, spec);
   if (prepared.changes.length) console.log(`  prepared ${file}: ${prepared.changes.join(", ")}`);
   const hash = sha256(prepared.bytes);
-  const cached = cachedUpload(feature, hash);
+  const cached = fresh ? undefined : cachedUpload(feature, hash);
   if (cached) return { fileId: cached, prepared: prepared.bytes };
   const fileId = await client.upload(feature, { bytes: prepared.bytes, fileName: prepared.fileName, contentType: prepared.contentType });
   rememberUpload(feature, hash, fileId);
@@ -132,13 +132,17 @@ export async function executeJob(client: YouCamClient, job: Job): Promise<Result
   }
 
   let body: object;
+  let fileIds: ResultRecord["fileIds"];
   if (job.kind === "tryon") {
-    const person = await uploadPrepared(client, feature, PEOPLE_DIR, job.personFile);
-    const garment = await uploadPrepared(client, feature, GARMENTS_DIR, job.garmentFile);
+    const fresh = job.freshUpload ?? false;
+    const person = await uploadPrepared(client, feature, PEOPLE_DIR, job.personFile, fresh);
+    const garment = await uploadPrepared(client, feature, GARMENTS_DIR, job.garmentFile, fresh);
     body = { src_file_id: person.fileId, ref_file_id: garment.fileId, garment_category: job.category };
+    fileIds = { src: person.fileId, ref: garment.fileId, fresh };
   } else {
     const person = await uploadPrepared(client, feature, PEOPLE_DIR, job.personFile);
     body = { src_file_id: person.fileId };
+    fileIds = { src: person.fileId, fresh: false };
   }
 
   const startedAt = new Date().toISOString();
@@ -163,7 +167,7 @@ export async function executeJob(client: YouCamClient, job: Job): Promise<Result
     return rec;
   }
 
-  const pending: PendingTask = { job, taskId, startedAt, unitsBefore: b.balance };
+  const pending: PendingTask = { job, taskId, startedAt, unitsBefore: b.balance, fileIds };
   addPending(pending);
   console.log(`  task ${taskId.slice(0, 12)}… started, saved to pending.json`);
   return pollAndRecord(client, pending, false);
@@ -226,6 +230,7 @@ async function pollAndRecord(client: YouCamClient, p: PendingTask, resumed: bool
     latencySec: Math.round((Date.parse(finishedAt) - startedMs) / 100) / 10,
     units: status.task_status === "success" ? cost : 0,
     resumed,
+    fileIds: p.fileIds,
   };
 
   if (rec.status === "success") {
@@ -302,7 +307,7 @@ const base = (f: string) => f.replace(/\.[^.]+$/, "");
 
 export function describe(job: Job) {
   return job.kind === "tryon"
-    ? `${job.garmentFile} [${job.label}, ${job.photoType}, ${job.category}] on ${job.personFile}${job.repeat ? ` (repeat ${job.repeat})` : ""}`
+    ? `${job.garmentFile} [${job.label}, ${job.photoType}, ${job.category}] on ${job.personFile}${job.repeat ? ` (repeat ${job.repeat}${job.freshUpload ? ", fresh upload" : ""})` : ""}`
     : `skin tone of ${job.personFile}`;
 }
 

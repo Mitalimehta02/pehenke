@@ -77,6 +77,11 @@ export interface PlanFilters {
    * their own keys (repeat 1..N), so the original cached result isn't reused.
    */
   repeat?: number;
+  /**
+   * With repeat: upload the files again for every render (new file IDs), to
+   * tell a deterministic model from a stored result. Plans repeats 1..N only.
+   */
+  freshUpload?: boolean;
 }
 
 export interface Plan {
@@ -106,9 +111,17 @@ export function planTryOns(garments: Garment[], people: Person[], f: PlanFilters
     for (const p of ps) {
       const personHash = fileHash(PEOPLE_DIR, p.file);
       const category = f.categoryOverride ?? g.category;
-      for (let repeat = 0; repeat <= (f.repeat ?? 0); repeat++) {
+      for (let repeat = f.freshUpload ? 1 : 0; repeat <= (f.repeat ?? 0); repeat++) {
         // repeat 0 keeps the original key, so earlier results stay cached
-        const keyParts = ["tryon", "cloth-v3", category, garmentHash, personHash, ...(repeat ? [`repeat:${repeat}`] : [])];
+        const keyParts = [
+          "tryon",
+          "cloth-v3",
+          category,
+          garmentHash,
+          personHash,
+          ...(repeat ? [`repeat:${repeat}`] : []),
+          ...(f.freshUpload ? ["fresh-upload"] : []),
+        ];
         jobs.push({
           kind: "tryon",
           key: sha256(keyParts.join("|")),
@@ -124,6 +137,7 @@ export function planTryOns(garments: Garment[], people: Person[], f: PlanFilters
           person: p.person,
           framing: p.framing,
           ...(repeat ? { repeat } : {}),
+          ...(f.freshUpload ? { freshUpload: true } : {}),
         });
       }
     }

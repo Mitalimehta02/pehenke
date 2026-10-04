@@ -5,6 +5,7 @@
 //          --category auto (send "auto" instead of the labelled category)
 //          --retry-errors (re-run cached task errors; they cost nothing)
 //          --repeat N (repeatability test: N extra renders per job, cached separately)
+//          --fresh-upload (with --repeat: re-upload files for each render, new file IDs)
 import "./loadEnv";
 import { parseArgs } from "node:util";
 import { CLOTHES_V3, TaskPollTimeoutError, type GarmentCategory } from "@/lib/youcam";
@@ -25,6 +26,7 @@ async function main() {
       category: { type: "string" },
       "retry-errors": { type: "boolean", default: false },
       repeat: { type: "string" },
+      "fresh-upload": { type: "boolean", default: false },
     },
   });
 
@@ -46,6 +48,7 @@ async function main() {
     framings: list(args.framing) as Framing[] | undefined,
     categoryOverride: args.category as GarmentCategory | undefined,
     repeat: args.repeat ? Number(args.repeat) : undefined,
+    freshUpload: args["fresh-upload"],
   });
 
   const cache = loadCache();

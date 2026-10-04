@@ -60,6 +60,8 @@ export interface TryOnJob {
   framing: Framing;
   /** repeatability runs: 1..N (absent for the original render) */
   repeat?: number;
+  /** upload person and garment again (new file IDs) instead of reusing cached uploads */
+  freshUpload?: boolean;
 }
 
 export interface SkinToneJob {
@@ -100,6 +102,8 @@ export interface ResultRecord {
   lengthCheck?: LengthResult;
   /** vision-model render audit; status "ok" carries the result */
   audit?: { status: AuditStatus; provider?: string; path?: string; result?: RenderAudit; error?: string };
+  /** YouCam file IDs used for this render */
+  fileIds?: { src: string; ref?: string; fresh: boolean };
   /** order-card verdict from audit + pixel checks */
   verdict?: VerdictResult;
   skinTone?: unknown;
@@ -119,6 +123,7 @@ export interface PendingTask {
   taskId: string;
   startedAt: string;
   unitsBefore: number | null;
+  fileIds?: ResultRecord["fileIds"];
 }
 
 export const loadPending = () => readJson<PendingTask[]>(PENDING, []);
