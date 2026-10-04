@@ -7,7 +7,10 @@ const schema = z.object({
   YOUCAM_SECRET_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   YOUCAM_BASE_URL: z.url().default("https://yce-api-01.makeupar.com"),
   SPIKE_UNIT_CAP: z.coerce.number().int().positive().default(300),
-  DATABASE_URL: z.string().optional(),
+  /** Postgres, POOLED (Neon "-pooler" host): app queries via lib/db.ts */
+  DATABASE_URL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  /** Postgres, DIRECT (no "-pooler"): Prisma CLI / migrations only, read by prisma.config.ts */
+  DIRECT_URL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   /** render audit (optional): skipped cleanly when unset */
   GEMINI_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   GEMINI_MODEL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),

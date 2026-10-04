@@ -24,8 +24,18 @@ Full-body garments (sarees, lehengas, kurta sets) stay in scope.
 
 - Next.js 16 (App Router) + TypeScript, one project. Next 16 differs from
   older versions: read `node_modules/next/dist/docs/` before writing Next code.
-- Postgres + Prisma 7. **Schema-only until the bot phase**: no database is
-  provisioned; the datasource URL lives in `prisma.config.ts`, not the schema.
+- Postgres (Neon) + Prisma 7. Two connection strings:
+  - `DATABASE_URL`: **pooled** (`-pooler` host). App queries only, via
+    `lib/db.ts` (Prisma 7 requires a driver adapter: `@prisma/adapter-pg`).
+  - `DIRECT_URL`: **direct** (no `-pooler`). Prisma CLI only (migrate, db
+    execute, studio), via `datasource.url` in `prisma.config.ts`. Prisma 7
+    removed `directUrl`; this is its replacement.
+  - The generated client lives in `lib/generated/prisma` (gitignored,
+    `postinstall` runs `prisma generate`).
+  - **The developer's home network blocks outbound port 5432** (the Neon host
+    answers on 443 but 5432 times out). Database commands (migrate, db
+    execute, local app runs that query the DB) need the phone hotspot or WARP.
+    The deployed app is not affected.
 - Hosted on a long-running Node host (not serverless): background polling and
   in-process work are fine.
 - YouCam API, called **server-side only**.
