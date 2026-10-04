@@ -8,6 +8,7 @@ const clean: RenderAudit = {
   added_items: [],
   person_changes: { face_changed: false, hair_changed: false, background_changed: false, notes: "" },
   drape: "natural",
+  reference_leak: { reference_has_figure: false, leaked: [] },
   summary: "",
 };
 
@@ -88,6 +89,46 @@ describe("decideCardVerdict", () => {
     );
     expect(r.card_verdict).toBe("block");
     expect(r.block_reason).toMatch(/unchanged.*face and hair changed/);
+  });
+
+  it("blocks when the seller's model's face or skin tone leaked", () => {
+    const r = decideCardVerdict(
+      input({ garmentLabel: "kurti", audit: audit({ reference_leak: { reference_has_figure: true, leaked: [{ what: "skin_tone", item: "darker arm skin" }] } }) }),
+    );
+    expect(r.card_verdict).toBe("block");
+    expect(r.block_reason).toMatch(/leaked.*skin tone/);
+    expect(r.next_step).toMatch(/garment alone/);
+  });
+
+  it("discloses a leaked bag and a leaked vest", () => {
+    const r = decideCardVerdict(
+      input({
+        garmentLabel: "men's kurta",
+        audit: audit({
+          reference_leak: {
+            reference_has_figure: true,
+            leaked: [
+              { what: "accessory", item: "handbag" },
+              { what: "garment", item: "Nehru vest" },
+            ],
+          },
+        }),
+      }),
+    );
+    expect(r.card_verdict).toBe("send_with_disclosure");
+    expect(r.disclosure_text).toBe("Men's kurta as ordered. Other garments and accessories are illustrative.");
+    expect(r.next_step).toMatch(/without the model's accessories/);
+  });
+
+  it("reports but does not act on a leaked body shape", () => {
+    const r = decideCardVerdict(input({ audit: audit({ reference_leak: { reference_has_figure: true, leaked: [{ what: "body_shape", item: "slimmer waist" }] } }) }));
+    expect(r.card_verdict).toBe("send");
+  });
+
+  it("handles older audits without reference_leak", () => {
+    const old = { ...clean } as Partial<RenderAudit>;
+    delete old.reference_leak;
+    expect(decideCardVerdict(input({ audit: old as RenderAudit })).card_verdict).toBe("send");
   });
 
   it("falls back to pixel checks with a generic disclosure when the audit is unavailable", () => {

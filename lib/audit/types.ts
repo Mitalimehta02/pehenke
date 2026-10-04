@@ -48,6 +48,16 @@ export const renderAuditSchema = z.object({
     notes: z.string(),
   }),
   drape: z.enum(["natural", "pasted_on", "not_applicable"]),
+  reference_leak: z.object({
+    /** the garment photo shows a person or a mannequin */
+    reference_has_figure: z.boolean(),
+    leaked: z.array(
+      z.object({
+        what: z.enum(["face", "skin_tone", "body_shape", "jewellery", "accessory", "garment"]),
+        item: z.string(),
+      }),
+    ),
+  }),
   summary: z.string(),
 });
 
@@ -81,4 +91,9 @@ Compare carefully and report:
 - person_changes: did the face, hair or background change between image 1 and image 3?
 - drape: for sarees and dupattas, does the fabric look naturally draped ("natural") or flatly
   pasted onto the body ("pasted_on")? Otherwise "not_applicable".
+- reference_leak: if image 2 shows a person or a mannequin (reference_has_figure), did anything
+  from that figure carry into image 3 instead of staying with the buyer: their face, skin tone,
+  body shape, jewellery, accessories (e.g. a bag), or extra garments worn with the item (e.g. a
+  vest or jacket over it, leggings under it)? List each leaked thing with what it is. Empty array
+  if nothing leaked or if image 2 has no figure.
 - summary: one sentence.`;

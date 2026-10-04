@@ -9,6 +9,7 @@ const AUDIT: RenderAudit = {
   added_items: [{ item: "pearl necklace", kind: "jewellery", location: "neck" }],
   person_changes: { face_changed: false, hair_changed: false, background_changed: false, notes: "" },
   drape: "natural",
+  reference_leak: { reference_has_figure: false, leaked: [] },
   summary: "Invented necklace.",
 };
 

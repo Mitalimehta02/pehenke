@@ -85,6 +85,15 @@ export function decideCardVerdict(input: VerdictInput): VerdictResult {
         step: "Ask the seller for a clearer, front-facing photo of the garment alone.",
       });
     }
+    // Reference leak: the model or mannequin in the seller's photo carried into the render.
+    // Older cached audits predate this field, hence the fallback.
+    const leakedIdentity = (audit.reference_leak?.leaked ?? []).filter((l) => l.what === "face" || l.what === "skin_tone");
+    if (leakedIdentity.length) {
+      blocks.push({
+        reason: `seller's model leaked into the render (${leakedIdentity.map((l) => (l.what === "skin_tone" ? "skin tone" : l.what)).join(", ")})`,
+        step: "Ask the seller for a photo of the garment alone (flat-lay, hanger or mannequin) instead of worn by a model.",
+      });
+    }
     if (audit.person_changes.face_changed || audit.person_changes.hair_changed) {
       const what = [audit.person_changes.face_changed && "face", audit.person_changes.hair_changed && "hair"].filter(Boolean).join(" and ");
       blocks.push({
@@ -129,6 +138,17 @@ export function decideCardVerdict(input: VerdictInput): VerdictResult {
       accessories = true;
     }
   }
+  // Leaked accessories or extra garments from the seller's photo are disclosed, not blocked.
+  // (Leaked body shape is reported by the audit but doesn't change the verdict.)
+  const leaks = audit.reference_leak?.leaked ?? [];
+  for (const l of leaks) {
+    if (l.what === "jewellery" || l.what === "accessory") accessories = true;
+    if (l.what === "garment") {
+      const name = companionName(garmentLabel, l.item);
+      if (name) pieces.add(name);
+      else otherPieces = true;
+    }
+  }
   const parts = [...pieces];
   if (otherPieces) parts.push("other garments");
   if (accessories) parts.push("accessories");
@@ -139,6 +159,7 @@ export function decideCardVerdict(input: VerdictInput): VerdictResult {
 
   const verb = parts.length === 1 && !parts[0].endsWith("s") ? "is" : "are";
   const addedJewellery = audit.added_items.some((i) => i.kind === "jewellery" || i.kind === "accessory");
+  const leakedFromModel = leaks.some((l) => l.what === "jewellery" || l.what === "accessory" || l.what === "garment");
   return {
     card_verdict: "send_with_disclosure",
     disclosure_text: `${label} as ordered. ${cap(joinList(parts))} ${verb} illustrative.`,
@@ -146,7 +167,9 @@ export function decideCardVerdict(input: VerdictInput): VerdictResult {
     next_step:
       addedJewellery && framing === "chest"
         ? "Ask the buyer for a full-body photo (chest-up photos get invented jewellery)."
-        : pieces.has("blouse")
+        : leakedFromModel
+          ? "Ask the seller for a photo of the garment alone, without the model's accessories or layers."
+          : pieces.has("blouse")
           ? "Optional: ask the seller to include the blouse in the garment photo."
           : null,
     audit_status: auditStatus,
