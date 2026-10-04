@@ -47,6 +47,8 @@ export interface RequestOptions<T> {
   /** units this call consumed, given the parsed body; defaults to 0 */
   unitsFor?: (body: T) => number | null;
   note?: string;
+  /** default: the API key. "none" for the V1 auth call; { bearer } for a V1 access token */
+  auth?: "none" | { bearer: string };
 }
 
 const MAX_ATTEMPTS = 5;
@@ -81,7 +83,7 @@ export class Http {
         res = await this.fetchImpl(url, {
           method,
           headers: {
-            Authorization: `Bearer ${this.opts.apiKey}`,
+            ...(ro.auth === "none" ? {} : { Authorization: `Bearer ${ro.auth?.bearer ?? this.opts.apiKey}` }),
             ...(ro.body !== undefined ? { "Content-Type": "application/json" } : {}),
           },
           body: ro.body !== undefined ? JSON.stringify(ro.body) : undefined,

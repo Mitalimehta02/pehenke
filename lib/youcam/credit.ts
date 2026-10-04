@@ -42,8 +42,11 @@ export function unitsPerImage(skus: FeatureCostSku[], feature: Feature): number 
  * Current unit balance. Documented under V1 auth (access token); whether the
  * V2 API key is accepted here is unverified, so callers must handle failure.
  */
-export async function getBalance(http: Http): Promise<{ total: number; entries: UnitBalanceEntry[] }> {
-  const res = await http.request<UnitBalanceResponse>("GET", "/s2s/v1.0/client/credit", { retry: "safe" });
+export async function getBalance(http: Http, bearer?: string): Promise<{ total: number; entries: UnitBalanceEntry[] }> {
+  const res = await http.request<UnitBalanceResponse>("GET", "/s2s/v1.0/client/credit", {
+    retry: "safe",
+    auth: bearer ? { bearer } : undefined,
+  });
   const entries = res.results ?? [];
   return { total: entries.reduce((n, e) => n + e.amount, 0), entries };
 }

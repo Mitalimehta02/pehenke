@@ -25,7 +25,7 @@ async function main() {
 
   try {
     const bal = await client.balance();
-    console.log(`balance: ${bal.total} units`);
+    console.log(`balance: ${bal.total} units (accepted auth: ${bal.auth === "api-key" ? "V2 API key" : "V1 token from the secret key"})`);
     for (const e of bal.entries) console.log(`  ${e.type}: ${e.amount} (expires ${new Date(e.expiry).toISOString().slice(0, 10)})`);
     const ledger = loadLedger();
     const nothingSpent = Object.keys(loadCache()).length === 0 && loadPending().length === 0;
@@ -35,7 +35,7 @@ async function main() {
     }
   } catch (err) {
     const why = err instanceof YouCamApiError ? `${err.httpStatus} ${err.errorCode ?? ""}`.trim() : (err as Error).message;
-    console.log(`balance: unavailable with this key (${why}); units will be tracked from the cost table only`);
+    console.log(`balance: unavailable with this key (${why}); units will be tracked from the cost table only${process.env.YOUCAM_SECRET_KEY ? "" : " (no YOUCAM_SECRET_KEY for the V1 fallback)"}`);
   }
 
   console.log(`\n${formatBudget(await budget(client))}`);

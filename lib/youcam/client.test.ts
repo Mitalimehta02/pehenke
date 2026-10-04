@@ -1,3 +1,4 @@
+import { constants, generateKeyPairSync, privateDecrypt } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { YouCamClient } from "./client";
 import { TaskLostError, TaskPollTimeoutError, YouCamApiError } from "./errors";
@@ -172,6 +173,52 @@ describe("upload", () => {
     expect(calls[1].init?.method).toBe("PUT");
     expect(new Headers(calls[1].init?.headers).get("content-type")).toBe("image/jpg");
     expect(JSON.stringify(logs)).not.toContain("SECRET");
+  });
+});
+
+describe("balance auth fallback", () => {
+  it("uses the API key when the balance endpoint accepts it", async () => {
+    const { client, calls } = setup(() => json(200, { status: 200, results: [{ id: 1, type: "ApiPaygToken", amount: 1000, expiry: 0 }] }));
+    await expect(client.balance()).resolves.toMatchObject({ total: 1000, auth: "api-key" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("falls back to a V1 token from the secret key on 401", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
+    const secret = publicKey.export({ type: "spki", format: "der" }).toString("base64");
+    let idToken = "";
+    const calls: Array<{ path: string; auth: string | null }> = [];
+    const fetchImpl = (async (input: URL | RequestInfo, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const auth = new Headers(init?.headers).get("authorization");
+      calls.push({ path: url.pathname, auth });
+      if (url.pathname === "/s2s/v1.0/client/auth") {
+        const body = JSON.parse(String(init?.body));
+        expect(body.client_id).toBe("api-key-1");
+        idToken = body.id_token;
+        return json(200, { status: 200, result: { access_token: "tok-1" } });
+      }
+      return auth === "Bearer tok-1"
+        ? json(200, { status: 200, results: [{ id: 1, type: "ApiPaygToken", amount: 990, expiry: 0 }] })
+        : json(401, { status: 401, error_code: "InvalidAccessToken" });
+    }) as typeof fetch;
+    const client = new YouCamClient({ apiKey: "api-key-1", secretKey: secret, baseUrl: "https://api.example.test", fetchImpl, logger: () => {} });
+
+    await expect(client.balance()).resolves.toMatchObject({ total: 990, auth: "v1-token" });
+    expect(calls.map((c) => c.path)).toEqual(["/s2s/v1.0/client/credit", "/s2s/v1.0/client/auth", "/s2s/v1.0/client/credit"]);
+    expect(calls[1].auth).toBeNull();
+    // id_token is "client_id=<key>&timestamp=<ms>" encrypted to the secret key
+    const plain = privateDecrypt({ key: privateKey, padding: constants.RSA_PKCS1_PADDING }, Buffer.from(idToken, "base64")).toString();
+    expect(plain).toMatch(/^client_id=api-key-1&timestamp=\d{13}$/);
+
+    // later calls reuse the token without retrying the API key
+    await client.balance();
+    expect(calls.slice(3).map((c) => c.path)).toEqual(["/s2s/v1.0/client/credit"]);
+  });
+
+  it("rethrows the 401 when no secret key is configured", async () => {
+    const { client } = setup(() => json(401, { status: 401, error_code: "InvalidAccessToken" }));
+    await expect(client.balance()).rejects.toBeInstanceOf(YouCamApiError);
   });
 });
 

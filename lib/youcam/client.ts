@@ -1,10 +1,21 @@
+import { getV1AccessToken } from "./auth";
 import { getBalance, getFeatureCosts, unitsPerImage } from "./credit";
+import { YouCamApiError } from "./errors";
 import { CLOTHES_V3 } from "./features/clothesV3";
 import { SKIN_TONE } from "./features/skinTone";
 import { downloadResult, uploadFile, type UploadInput } from "./files";
 import { Http, type HttpOptions } from "./http";
 import { deleteTask, getTask, pollTask, startTask, type PollOptions } from "./tasks";
-import type { ClothesV3Request, ClothesV3Result, Feature, FeatureCostSku, SkinToneRequest, SkinToneResult, TaskStatusData } from "./types";
+import type {
+  ClothesV3Request,
+  ClothesV3Result,
+  Feature,
+  FeatureCostSku,
+  SkinToneRequest,
+  SkinToneResult,
+  TaskStatusData,
+  UnitBalanceEntry,
+} from "./types";
 
 export interface RunHooks {
   /**
@@ -20,10 +31,16 @@ export class YouCamClient {
   readonly http: Http;
   private readonly fetchImpl: typeof fetch;
   private costs: FeatureCostSku[] | undefined;
+  private readonly apiKey: string;
+  private readonly secretKey: string | undefined;
+  private balanceAuth: "api-key" | "v1-token" | undefined;
+  private v1Token: { token: string; expiresAt: number } | undefined;
 
-  constructor(opts: HttpOptions) {
+  constructor(opts: HttpOptions & { secretKey?: string }) {
     this.http = new Http(opts);
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.apiKey = opts.apiKey;
+    this.secretKey = opts.secretKey;
   }
 
   // ---- units ----
@@ -37,8 +54,29 @@ export class YouCamClient {
   /** Units per successful task of this feature, from the cost table (null if unknown/ambiguous). */
   unitCost = (feature: Feature): number | null => (this.costs ? unitsPerImage(this.costs, feature) : null);
 
-  balance() {
-    return getBalance(this.http);
+  /**
+   * Unit balance. The endpoint is documented under V1 auth, so try the V2 API
+   * key first and, on 401, a V1 access token (needs the secret key). Reports
+   * which one worked; remembers it for later calls.
+   */
+  async balance(): Promise<{ total: number; entries: UnitBalanceEntry[]; auth: "api-key" | "v1-token" }> {
+    if (this.balanceAuth !== "v1-token") {
+      try {
+        const b = await getBalance(this.http);
+        this.balanceAuth = "api-key";
+        return { ...b, auth: "api-key" };
+      } catch (err) {
+        if (!(err instanceof YouCamApiError && err.httpStatus === 401) || !this.secretKey) throw err;
+      }
+    }
+    if (!this.secretKey) throw new Error("balance needs V1 token auth but no secret key is configured");
+    if (!this.v1Token || this.v1Token.expiresAt < Date.now()) {
+      // valid 2h per the docs; refresh 10 min early
+      this.v1Token = { token: await getV1AccessToken(this.http, this.apiKey, this.secretKey), expiresAt: Date.now() + 110 * 60_000 };
+    }
+    const b = await getBalance(this.http, this.v1Token.token);
+    this.balanceAuth = "v1-token";
+    return { ...b, auth: "v1-token" };
   }
 
   // ---- generic ----
