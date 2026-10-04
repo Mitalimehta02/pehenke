@@ -111,6 +111,10 @@ export class TryOnService {
     return this.queue.idle();
   }
 
+  get caps() {
+    return this.deps.ledger.caps;
+  }
+
   // ---------------- internals ----------------
 
   private client(tryOnId: string) {
