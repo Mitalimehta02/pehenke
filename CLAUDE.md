@@ -76,6 +76,13 @@ spec). If something isn't in the spec, say so instead of guessing.
   `skin-tone-analysis`. We follow the spec.
 - Error code table includes codes absent from the enum (`error_invalid_ref`,
   `error_apply_region_mismatch`): treat task errors as open strings.
+- Verified live: feature-cost rejects `starting_token=null` (400) although
+  the docs say to start with `null`; omit it on the first page.
+- Verified live: the balance endpoint accepts both the V2 API key and a V1
+  token (secret key, RSA PKCS#1 v1.5) but returned `results: []` for our
+  account, so it can't be relied on for budgeting yet.
+- Verified live costs: cloth-v3 = 2 units per result image;
+  skin-tone-analysis = 20 units per result.
 
 ## Conventions
 
