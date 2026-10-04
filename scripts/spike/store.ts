@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CallLogEntry, Feature, GarmentCategory } from "@/lib/youcam";
+import type { RenderAudit } from "@/lib/audit/types";
 import type { GarmentLength, LengthResult } from "./guards";
 
 export const ROOT = process.cwd();
@@ -96,6 +97,8 @@ export interface ResultRecord {
   badRender?: { flagged: boolean; changedPct: number; aspectChanged: boolean };
   /** garment length guard (full-body framing only) */
   lengthCheck?: LengthResult;
+  /** vision-model render audit (spike:audit) */
+  audit?: { provider: string; path: string; result: RenderAudit };
   skinTone?: unknown;
 }
 

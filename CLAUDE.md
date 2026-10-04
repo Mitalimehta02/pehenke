@@ -99,6 +99,26 @@ eye, hair colours) against the buyer. Every later feature (lip shade,
 jewellery, complete-the-look) reads the cached result; never re-analyse
 the same buyer, and never call it speculatively or per message.
 
+## Render audit (vision model)
+
+`lib/audit/` checks each try-on output for things the buyer didn't order
+(invented jewellery, accessories, garment pieces), wrong length, and changes
+to face/hair/background. Pipeline code depends only on the `RenderAuditor`
+interface (`auditRender(input) -> RenderAudit` JSON); providers are swapped
+in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
+
+- Provider: Gemini API **free tier**, model `gemini-3.8-flash` (stable,
+  image input, free tier: checked in Google's docs 2026-10-01), via the
+  Interactions API with `store=false`.
+- **Gemini free-tier inputs may be used by Google to improve its products**
+  (Google's pricing page: "Used to improve our products: Yes" for the free
+  tier, "No" for paid). This provider is for **spike images only**. Real
+  buyer photos need a paid tier, or explicit consent wording that covers
+  this, before the pilot.
+- Free-tier rate limits are not published per model (only visible per
+  project in AI Studio): run one audit at a time, keep a gap between
+  requests, back off on 429/503. Never call it in parallel.
+
 ## Conventions
 
 - **API budget**: 1,000 units total; the spike is hard-capped at 300

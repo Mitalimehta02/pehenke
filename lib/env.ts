@@ -8,6 +8,9 @@ const schema = z.object({
   YOUCAM_BASE_URL: z.url().default("https://yce-api-01.makeupar.com"),
   SPIKE_UNIT_CAP: z.coerce.number().int().positive().default(300),
   DATABASE_URL: z.string().optional(),
+  /** render audit (optional): skipped cleanly when unset */
+  GEMINI_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  GEMINI_MODEL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
 });
 
 export type ServerEnv = z.infer<typeof schema>;
