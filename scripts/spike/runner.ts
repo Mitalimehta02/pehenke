@@ -49,10 +49,14 @@ export function capFromEnv(): number {
   return Number(process.env.SPIKE_UNIT_CAP ?? 300);
 }
 
-/** Balance total, or null if the endpoint rejects our key (it's documented under V1 auth). */
+/**
+ * Balance total, or null if the endpoint rejects our key (it's documented
+ * under V1 auth) or returns no unit entries (seen live: `results: []`).
+ */
 export async function tryBalance(client: YouCamClient): Promise<number | null> {
   try {
-    return (await client.balance()).total;
+    const b = await client.balance();
+    return b.entries.length ? b.total : null;
   } catch {
     return null;
   }

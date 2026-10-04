@@ -25,7 +25,13 @@ async function main() {
 
   try {
     const bal = await client.balance();
-    console.log(`balance: ${bal.total} units (accepted auth: ${bal.auth === "api-key" ? "V2 API key" : "V1 token from the secret key"})`);
+    const auth = bal.auth === "api-key" ? "V2 API key" : "V1 token from the secret key";
+    if (!bal.entries.length) {
+      // Seen live: 200 with `results: []`. Not trustworthy as "0 units", so no baseline.
+      console.log(`balance: endpoint accepted the ${auth} but returned no unit entries (results: []); not used as a budget baseline`);
+      return void console.log(`\n${formatBudget(await budget(client))}`);
+    }
+    console.log(`balance: ${bal.total} units (accepted auth: ${auth})`);
     for (const e of bal.entries) console.log(`  ${e.type}: ${e.amount} (expires ${new Date(e.expiry).toISOString().slice(0, 10)})`);
     const ledger = loadLedger();
     const nothingSpent = Object.keys(loadCache()).length === 0 && loadPending().length === 0;

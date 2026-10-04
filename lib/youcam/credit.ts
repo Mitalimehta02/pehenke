@@ -7,7 +7,9 @@ export async function getFeatureCosts(http: Http): Promise<FeatureCostSku[]> {
   let token: string | null = null;
   for (let page = 0; page < 50; page++) {
     const res: FeatureCostResponse = await http.request<FeatureCostResponse>("GET", "/s2s/v2.0/credit/feature-cost", {
-      query: { page_size: 20, starting_token: token },
+      // The docs say to start with `null`, but the API rejects the literal
+      // "null" (400 InvalidParameters): omit the token on the first page.
+      query: { page_size: 20, starting_token: token ?? undefined },
       retry: "safe",
     });
     skus.push(...res.result.skus);
