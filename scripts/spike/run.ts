@@ -4,6 +4,7 @@
 // Filters: --garments a.jpg,b.jpg  --people priya  --framing full,chest
 //          --category auto (send "auto" instead of the labelled category)
 //          --retry-errors (re-run cached task errors; they cost nothing)
+//          --repeat N (repeatability test: N extra renders per job, cached separately)
 import "./loadEnv";
 import { parseArgs } from "node:util";
 import { CLOTHES_V3, TaskPollTimeoutError, type GarmentCategory } from "@/lib/youcam";
@@ -23,6 +24,7 @@ async function main() {
       framing: { type: "string" },
       category: { type: "string" },
       "retry-errors": { type: "boolean", default: false },
+      repeat: { type: "string" },
     },
   });
 
@@ -43,6 +45,7 @@ async function main() {
     people: list(args.people),
     framings: list(args.framing) as Framing[] | undefined,
     categoryOverride: args.category as GarmentCategory | undefined,
+    repeat: args.repeat ? Number(args.repeat) : undefined,
   });
 
   const cache = loadCache();

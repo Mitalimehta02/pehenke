@@ -119,3 +119,7 @@ the same buyer, and never call it speculatively or per message.
 - `npm run spike` — dry run: plan + cost estimate, spends nothing
 - `npm run spike -- --yes` — real run (only after human approval)
 - `npm run spike:skintone -- --person <file>` — dry run; add `--yes` to spend
+- `npm run spike -- --repeat N ...` — repeatability: N extra renders per job,
+  cached under their own keys (the only sanctioned cache bypass)
+- `npm run spike:recheck` — free: re-run pixel guards (bad render, garment
+  length) on cached outputs and rewrite results.csv

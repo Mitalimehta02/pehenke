@@ -11,7 +11,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "spike": "tsx --conditions=react-server scripts/spike/run.ts",
     "spike:costs": "tsx --conditions=react-server scripts/spike/costs.ts",
-    "spike:skintone": "tsx --conditions=react-server scripts/spike/skintone.ts"
+    "spike:skintone": "tsx --conditions=react-server scripts/spike/skintone.ts",
+    "spike:recheck": "tsx --conditions=react-server scripts/spike/recheck.ts"
   },
   "dependencies": {
     "@prisma/client": "^7.10.0",

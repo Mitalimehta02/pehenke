@@ -69,6 +69,15 @@ describe("spike runner", () => {
     expect(plan.skipped[0].what).toBe("salwar.jpg");
   });
 
+  it("plans repeat renders under new keys and keeps the original key", () => {
+    const base = assets.planTryOns(assets.loadGarments(), assets.loadPeople(), {}).jobs;
+    const rep = assets.planTryOns(assets.loadGarments(), assets.loadPeople(), { repeat: 2 }).jobs;
+    expect(rep).toHaveLength(base.length * 3);
+    expect(rep[0].key).toBe(base[0].key);
+    expect(new Set(rep.map((j) => j.key)).size).toBe(rep.length);
+    expect(rep.map((j) => j.repeat ?? 0)).toEqual([0, 1, 2]);
+  });
+
   it("keeps the task id on disk when polling dies, then resumes it without starting a new task", async () => {
     const [job] = assets.planTryOns(assets.loadGarments(), assets.loadPeople(), {}).jobs;
 
@@ -109,6 +118,6 @@ describe("spike runner", () => {
     expect(header).toContain("person_file,framing");
     expect(header).toContain("photo_type");
     expect(header).toContain("output_w,output_h");
-    expect(row).toContain("kurti.jpg,kurti,upper_body,upper_body,hanger,asha,asha-full.jpg,full,success");
+    expect(row).toContain("kurti.jpg,kurti,upper_body,upper_body,hanger,asha,asha-full.jpg,full,0,success");
   });
 });

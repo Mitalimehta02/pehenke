@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { GarmentCategory } from "@/lib/youcam";
+import { GARMENT_LENGTHS, defaultLength, type GarmentLength } from "./guards";
 import { GARMENTS_CSV, GARMENTS_DIR, PEOPLE_DIR, sha256, type Framing, type PhotoType, type SkinToneJob, type TryOnJob } from "./store";
 
 export interface Garment {
@@ -8,6 +9,8 @@ export interface Garment {
   label: string;
   category: Exclude<GarmentCategory, "auto">;
   photoType: PhotoType;
+  /** expected hem length; optional 5th CSV column, else derived from the label */
+  length?: GarmentLength;
 }
 
 export interface Person {
@@ -21,24 +24,26 @@ const PHOTO_TYPES = ["flatlay", "hanger", "mannequin", "worn"] as const;
 const IMAGE_EXT = /\.(jpe?g|png)$/i;
 
 export function loadGarments(): Garment[] {
-  if (!existsSync(GARMENTS_CSV)) throw new Error(`Missing ${path.relative(process.cwd(), GARMENTS_CSV)} (columns: file,label,category,photo_type)`);
+  if (!existsSync(GARMENTS_CSV)) throw new Error(`Missing ${path.relative(process.cwd(), GARMENTS_CSV)} (columns: file,label,category,photo_type[,length])`);
   const lines = readFileSync(GARMENTS_CSV, "utf8")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith("#"));
   const header = lines.shift()?.split(",").map((h) => h.trim().toLowerCase());
-  if (header?.join(",") !== "file,label,category,photo_type") {
-    throw new Error(`garments.csv header must be exactly: file,label,category,photo_type (got: ${header?.join(",")})`);
+  const h = header?.join(",");
+  if (h !== "file,label,category,photo_type" && h !== "file,label,category,photo_type,length") {
+    throw new Error(`garments.csv header must be: file,label,category,photo_type[,length] (got: ${h})`);
   }
   const errors: string[] = [];
   const garments = lines.map((line, i) => {
-    const [file, label, category, photoType] = line.split(",").map((c) => c.trim());
+    const [file, label, category, photoType, length] = line.split(",").map((c) => c.trim());
     const where = `garments.csv line ${i + 2}`;
     if (!file || !label) errors.push(`${where}: file and label are required`);
     if (!CATEGORIES.includes(category as never)) errors.push(`${where}: category must be one of ${CATEGORIES.join("|")} (got "${category}")`);
     if (!PHOTO_TYPES.includes(photoType as never)) errors.push(`${where}: photo_type must be one of ${PHOTO_TYPES.join("|")} (got "${photoType}")`);
+    if (length && !GARMENT_LENGTHS.includes(length as GarmentLength)) errors.push(`${where}: length must be one of ${GARMENT_LENGTHS.join("|")} (got "${length}")`);
     if (file && !existsSync(path.join(GARMENTS_DIR, file))) errors.push(`${where}: ${file} not found in spike-assets/garments`);
-    return { file, label, category, photoType } as Garment;
+    return { file, label, category, photoType, length: (length || undefined) as GarmentLength | undefined } as Garment;
   });
   if (errors.length) throw new Error(errors.join("\n"));
 
@@ -67,6 +72,11 @@ export interface PlanFilters {
   framings?: Framing[];
   /** send this category instead of the labelled one (the "auto" comparison) */
   categoryOverride?: GarmentCategory;
+  /**
+   * Repeatability test: also plan N extra renders of each job, cached under
+   * their own keys (repeat 1..N), so the original cached result isn't reused.
+   */
+  repeat?: number;
 }
 
 export interface Plan {
@@ -96,20 +106,26 @@ export function planTryOns(garments: Garment[], people: Person[], f: PlanFilters
     for (const p of ps) {
       const personHash = fileHash(PEOPLE_DIR, p.file);
       const category = f.categoryOverride ?? g.category;
-      jobs.push({
-        kind: "tryon",
-        key: sha256(["tryon", "cloth-v3", category, garmentHash, personHash].join("|")),
-        garmentFile: g.file,
-        garmentHash,
-        label: g.label,
-        labelCategory: g.category,
-        category,
-        photoType: g.photoType,
-        personFile: p.file,
-        personHash,
-        person: p.person,
-        framing: p.framing,
-      });
+      for (let repeat = 0; repeat <= (f.repeat ?? 0); repeat++) {
+        // repeat 0 keeps the original key, so earlier results stay cached
+        const keyParts = ["tryon", "cloth-v3", category, garmentHash, personHash, ...(repeat ? [`repeat:${repeat}`] : [])];
+        jobs.push({
+          kind: "tryon",
+          key: sha256(keyParts.join("|")),
+          garmentFile: g.file,
+          garmentHash,
+          label: g.label,
+          labelCategory: g.category,
+          category,
+          photoType: g.photoType,
+          expectedLength: g.length ?? defaultLength(g.label),
+          personFile: p.file,
+          personHash,
+          person: p.person,
+          framing: p.framing,
+          ...(repeat ? { repeat } : {}),
+        });
+      }
     }
   }
   return { jobs, skipped };

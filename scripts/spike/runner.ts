@@ -15,6 +15,7 @@ import {
 } from "@/lib/youcam";
 import { youcamFromEnv } from "@/lib/youcam/server";
 import { checkBadRender } from "./badRender";
+import { checkGarmentLength } from "./guards";
 import {
   GARMENTS_DIR,
   IMAGES_DIR,
@@ -34,6 +35,7 @@ import {
   type Job,
   type PendingTask,
   type ResultRecord,
+  type TryOnJob,
 } from "./store";
 
 export const POLL_TIMEOUT_MS = 5 * 60_000;
@@ -263,7 +265,7 @@ async function saveTryOnOutput(client: YouCamClient, p: PendingTask, status: Tas
   }
   const meta = await sharp(dl.bytes).metadata();
   const ext = meta.format === "png" ? "png" : "jpg";
-  const name = `${base(job.garmentFile)}__${job.person}-${job.framing}__${job.category}__${job.key.slice(0, 8)}.${ext}`;
+  const name = `${base(job.garmentFile)}__${job.person}-${job.framing}__${job.category}${job.repeat ? `__r${job.repeat}` : ""}__${job.key.slice(0, 8)}.${ext}`;
   mkdirSync(IMAGES_DIR, { recursive: true });
   const out = path.join(IMAGES_DIR, name);
   writeFileSync(out, dl.bytes);
@@ -271,10 +273,18 @@ async function saveTryOnOutput(client: YouCamClient, p: PendingTask, status: Tas
   rec.outputWidth = meta.width;
   rec.outputHeight = meta.height;
 
+  Object.assign(rec, await analyseOutput(job, dl.bytes));
+}
+
+/** Pixel guards on a try-on output: bad render (original clothes returned) and garment length. Free. */
+export async function analyseOutput(job: TryOnJob, output: Uint8Array): Promise<Pick<ResultRecord, "badRender" | "lengthCheck">> {
   // Compare against exactly what we uploaded (EXIF-rotated person photo).
   const input = await prepareImage(readFileSync(path.join(PEOPLE_DIR, job.personFile)), job.personFile, CLOTHES_V3_IMAGE);
-  const br = await checkBadRender(input.bytes, dl.bytes, job.framing, job.labelCategory);
-  rec.badRender = br;
+  const garment = readFileSync(path.join(GARMENTS_DIR, job.garmentFile));
+  return {
+    badRender: await checkBadRender(input.bytes, output, job.framing, job.labelCategory),
+    lengthCheck: await checkGarmentLength({ input: input.bytes, output, garment, framing: job.framing, expectedLength: job.expectedLength }),
+  };
 }
 
 function saveSkinTone(p: PendingTask, status: TaskStatusData<SkinToneResult>, rec: ResultRecord) {
@@ -289,7 +299,7 @@ const base = (f: string) => f.replace(/\.[^.]+$/, "");
 
 export function describe(job: Job) {
   return job.kind === "tryon"
-    ? `${job.garmentFile} [${job.label}, ${job.photoType}, ${job.category}] on ${job.personFile}`
+    ? `${job.garmentFile} [${job.label}, ${job.photoType}, ${job.category}] on ${job.personFile}${job.repeat ? ` (repeat ${job.repeat})` : ""}`
     : `skin tone of ${job.personFile}`;
 }
 
@@ -300,5 +310,6 @@ export function report(rec: ResultRecord) {
   if (rec.error) parts.push(`error ${rec.error}${rec.errorMessage ? `: ${rec.errorMessage}` : ""}`);
   if (rec.outputPath) parts.push(rec.outputPath);
   if (rec.badRender) parts.push(`region changed ${(rec.badRender.changedPct * 100).toFixed(0)}%${rec.badRender.flagged ? " BAD-RENDER FLAG" : ""}`);
+  if (rec.lengthCheck) parts.push(`hem ${rec.lengthCheck.hemPos.toFixed(2)} (expected ${rec.lengthCheck.expected})${rec.lengthCheck.flagged ? " LENGTH FLAG" : ""}`);
   console.log(parts.join(" | "));
 }

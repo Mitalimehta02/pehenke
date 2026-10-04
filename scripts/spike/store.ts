@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CallLogEntry, Feature, GarmentCategory } from "@/lib/youcam";
+import type { GarmentLength, LengthResult } from "./guards";
 
 export const ROOT = process.cwd();
 // Overridable so tests never touch the real spike state.
@@ -49,10 +50,14 @@ export interface TryOnJob {
   /** what we send; differs from labelCategory only for the "auto" comparison runs */
   category: GarmentCategory;
   photoType: PhotoType;
+  /** expected hem length for the length guard */
+  expectedLength?: GarmentLength;
   personFile: string;
   personHash: string;
   person: string;
   framing: Framing;
+  /** repeatability runs: 1..N (absent for the original render) */
+  repeat?: number;
 }
 
 export interface SkinToneJob {
@@ -89,6 +94,8 @@ export interface ResultRecord {
   /** kept only if the download failed (valid ~2h) */
   resultUrl?: string;
   badRender?: { flagged: boolean; changedPct: number; aspectChanged: boolean };
+  /** garment length guard (full-body framing only) */
+  lengthCheck?: LengthResult;
   skinTone?: unknown;
 }
 
