@@ -1,4 +1,6 @@
-# One row per garment image in spike-assets/garments.
+# One row per garment image in spike-assets/garments. Sources: SOURCES.md
 # category: upper_body | lower_body | full_body | shoes   (sarees and lehengas: full_body)
 # photo_type: flatlay | hanger | mannequin | worn          (lower_body: worn only, max 2)
 file,label,category,photo_type
+choli-red.jpg,choli,upper_body,hanger
+saree-magenta.jpg,saree,full_body,flatlay
