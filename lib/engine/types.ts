@@ -9,7 +9,13 @@ export type Incoming = {
   sellerSlug: string;
   /** web: anonymous cookie id; whatsapp: phone number */
   buyerExternalId: string;
-} & ({ kind: "text"; text: string } | { kind: "image"; bytes: Uint8Array } | { kind: "button"; id: string; label?: string });
+} & (
+  | { kind: "text"; text: string }
+  | { kind: "image"; bytes: Uint8Array }
+  | { kind: "button"; id: string; label?: string }
+  /** the chat was opened: greet a new conversation, otherwise do nothing (not recorded) */
+  | { kind: "open" }
+);
 
 export interface Button {
   id: string;

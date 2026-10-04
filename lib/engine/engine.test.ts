@@ -96,6 +96,14 @@ describe("buyer flow", () => {
     expect((await db.prisma.order.findFirstOrThrow()).outcomeAt).not.toBeNull();
   });
 
+  it("opening the chat greets once, without recording a buyer message", async () => {
+    const first = await app.engine.handle({ ...base(), kind: "open" });
+    expect(first.messages.every((m) => m.direction === "out")).toBe(true);
+    expect(texts(out(first))).toMatch(/Welcome to Asha Sarees/);
+    expect((await app.engine.handle({ ...base(), kind: "open" })).messages).toEqual([]);
+    expect(await state()).toBe("AWAIT_CONSENT");
+  });
+
   it("declining consent stores nothing; 'hi' starts over", async () => {
     await say("hi");
     expect(texts(await tap(BTN.decline))).toMatch(/Nothing was saved/);

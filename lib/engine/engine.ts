@@ -76,6 +76,10 @@ export class Engine {
     return this.withLock(conv.id, async () => {
       const fresh = await prisma.conversation.findUniqueOrThrow({ where: { id: conv.id } });
       const turn = this.turn(fresh, seller);
+      if (inc.kind === "open") {
+        if (turn.state === "NEW") await this.greet(turn);
+        return { conversationId: conv.id, messages: await this.commit(turn) };
+      }
       const incoming = await this.recordIncoming(turn, inc);
       await this.dispatch(turn, inc);
       const outgoing = await this.commit(turn);
@@ -120,6 +124,14 @@ export class Engine {
         if (turn.state === "AWAIT_SELLER") turn.state = "PICK_GARMENT";
       }
       await this.commit(turn);
+    });
+  }
+
+  /** The conversation for a buyer on a channel with a seller, if any. */
+  async findConversation(sellerSlug: string, channel: "web" | "whatsapp", externalId: string) {
+    return this.d.prisma.conversation.findFirst({
+      where: { seller: { slug: sellerSlug }, channel, buyer: { channel, externalId } },
+      select: { id: true, state: true },
     });
   }
 
