@@ -3,6 +3,8 @@ import { z } from "zod";
 
 const schema = z.object({
   YOUCAM_API_KEY: z.string().min(1, "YOUCAM_API_KEY is not set (see .env.example)"),
+  /** V1 token auth only (fallback); empty counts as unset */
+  YOUCAM_SECRET_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   YOUCAM_BASE_URL: z.url().default("https://yce-api-01.makeupar.com"),
   SPIKE_UNIT_CAP: z.coerce.number().int().positive().default(300),
   DATABASE_URL: z.string().optional(),
