@@ -9,8 +9,8 @@ export * from "./types";
  * The configured render auditor, or undefined when no provider key is set:
  * callers must skip the audit cleanly in that case. Swap providers here.
  */
-export function auditorFromEnv(): RenderAuditor | undefined {
+export function auditorFromEnv(onRequest?: (status: number | null) => void): RenderAuditor | undefined {
   const env = serverEnv();
   if (!env.GEMINI_API_KEY) return undefined;
-  return new GeminiAuditor({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL });
+  return new GeminiAuditor({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL, onRequest });
 }

@@ -1,6 +1,9 @@
+import type { RenderAuditor } from "./audit/types";
 import { ConsentService } from "./consent/service";
 import { Engine } from "./engine/engine";
 import type { PrismaClient } from "./generated/prisma/client";
+import { GarmentGate } from "./gate/garmentGate";
+import { GarmentService } from "./garments/service";
 import { OrderService } from "./orders/service";
 import { PrismaBlobStore } from "./storage/blobs";
 import { TryOnService } from "./tryon/service";
@@ -14,6 +17,8 @@ export interface AppDeps {
   caps: Caps;
   now?: () => Date;
   pollTimeoutMs?: number;
+  /** vision auditor for the seller photo gate (optional); receives a per-request hook for the Gemini budget */
+  auditor?: (onRequest: (status: number | null) => void) => RenderAuditor | undefined;
 }
 
 /** Composition root: wires the services. Pure (no env access) so tests build it with fakes. */
@@ -33,7 +38,10 @@ export function createApp(d: AppDeps) {
   });
   engine.tryOns = tryOns;
   const orders = new OrderService({ prisma: d.prisma, engine, now: d.now });
-  return { prisma: d.prisma, blobs, ledger, consent, engine, tryOns, orders };
+  const auditor = d.auditor?.((status) => ledger.logGemini("interactions", status));
+  const gate = new GarmentGate({ auditor, ledger });
+  const garments = new GarmentService({ prisma: d.prisma, blobs, gate, now: d.now });
+  return { prisma: d.prisma, blobs, ledger, consent, engine, tryOns, orders, gate, garments, auditor };
 }
 
 export type App = ReturnType<typeof createApp>;

@@ -1,6 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
-import { AUDIT_PROMPT, renderAuditJsonSchema, renderAuditSchema, type AuditImage, type RenderAudit, type RenderAuditInput, type RenderAuditor } from "./types";
+import type { ZodType } from "zod";
+import {
+  AUDIT_PROMPT,
+  GARMENT_GATE_PROMPT,
+  garmentPhotoAuditJsonSchema,
+  garmentPhotoAuditSchema,
+  renderAuditJsonSchema,
+  renderAuditSchema,
+  type AuditImage,
+  type GarmentPhotoAudit,
+  type GarmentPhotoInput,
+  type RenderAudit,
+  type RenderAuditInput,
+  type RenderAuditor,
+} from "./types";
 
 /**
  * Gemini render auditor via the Interactions API (official @google/genai SDK).
@@ -31,6 +45,8 @@ export interface GeminiAuditorOptions {
   sleep?: (ms: number) => Promise<void>;
   /** for tests: replaces the SDK call */
   create?: (params: object) => Promise<{ output_text?: string }>;
+  /** called for every request attempt (retries included) with its HTTP status (200 on success) */
+  onRequest?: (status: number | null) => void;
 }
 
 export class GeminiAuditor implements RenderAuditor {
@@ -44,8 +60,10 @@ export class GeminiAuditor implements RenderAuditor {
   private lastStart = 0;
   /** set when the daily quota is exhausted: later audits fail fast instead of retrying */
   private exhausted: string | undefined;
+  private readonly onRequest?: (status: number | null) => void;
 
   constructor(opts: GeminiAuditorOptions) {
+    this.onRequest = opts.onRequest;
     this.model = opts.model ?? DEFAULT_GEMINI_MODEL;
     this.name = `gemini:${this.model}`;
     this.minGapMs = opts.minGapMs ?? 4000;
@@ -60,42 +78,62 @@ export class GeminiAuditor implements RenderAuditor {
     }
   }
 
-  /** Serialised: concurrent callers wait their turn. */
   auditRender(input: RenderAuditInput): Promise<RenderAudit> {
-    const run = this.queue.then(() => this.auditOnce(input));
+    return this.serial(async () => {
+      const [person, garment, output] = await Promise.all([shrink(input.person), shrink(input.garment), shrink(input.output)]);
+      const prompt = AUDIT_PROMPT.replace("{label}", input.garmentLabel).replace("{category}", input.category);
+      return this.request(
+        [
+          { type: "text", text: prompt },
+          { type: "text", text: "Image 1: buyer's original photo." },
+          { type: "image", data: person, mime_type: "image/jpeg" },
+          { type: "text", text: "Image 2: seller's garment photo (reference)." },
+          { type: "image", data: garment, mime_type: "image/jpeg" },
+          { type: "text", text: "Image 3: try-on output." },
+          { type: "image", data: output, mime_type: "image/jpeg" },
+        ],
+        renderAuditJsonSchema,
+        renderAuditSchema,
+      );
+    });
+  }
+
+  auditGarmentPhoto(input: GarmentPhotoInput): Promise<GarmentPhotoAudit> {
+    return this.serial(async () => {
+      const prompt = GARMENT_GATE_PROMPT.replace("{label}", input.garmentLabel).replace("{category}", input.category).replace("{photoType}", input.photoType);
+      return this.request(
+        [
+          { type: "text", text: prompt },
+          { type: "image", data: await shrink(input.image), mime_type: "image/jpeg" },
+        ],
+        garmentPhotoAuditJsonSchema,
+        garmentPhotoAuditSchema,
+      );
+    });
+  }
+
+  /** One request at a time: concurrent callers wait their turn (free-tier pacing). */
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn);
     this.queue = run.catch(() => undefined);
     return run;
   }
 
-  private async auditOnce(input: RenderAuditInput): Promise<RenderAudit> {
+  private async request<T>(input: object[], jsonSchema: object, schema: ZodType<T>): Promise<T> {
     if (this.exhausted) throw new Error(`${this.name} daily quota exhausted: ${this.exhausted}`);
-    const [person, garment, output] = await Promise.all([shrink(input.person), shrink(input.garment), shrink(input.output)]);
-    const prompt = AUDIT_PROMPT.replace("{label}", input.garmentLabel).replace("{category}", input.category);
-    const params = {
-      model: this.model,
-      store: false,
-      input: [
-        { type: "text", text: prompt },
-        { type: "text", text: "Image 1: buyer's original photo." },
-        { type: "image", data: person, mime_type: "image/jpeg" },
-        { type: "text", text: "Image 2: seller's garment photo (reference)." },
-        { type: "image", data: garment, mime_type: "image/jpeg" },
-        { type: "text", text: "Image 3: try-on output." },
-        { type: "image", data: output, mime_type: "image/jpeg" },
-      ],
-      response_format: { type: "text", mime_type: "application/json", schema: renderAuditJsonSchema },
-    };
-
+    const params = { model: this.model, store: false, input, response_format: { type: "text", mime_type: "application/json", schema: jsonSchema } };
     for (let attempt = 1; ; attempt++) {
       const wait = this.lastStart + this.minGapMs - Date.now();
       if (wait > 0) await this.sleep(wait);
       this.lastStart = Date.now();
       try {
         const res = await this.create(params);
+        this.onRequest?.(200);
         if (!res.output_text) throw new Error("Gemini returned no text");
-        return renderAuditSchema.parse(JSON.parse(res.output_text));
+        return schema.parse(JSON.parse(res.output_text));
       } catch (err) {
         const status = statusOf(err);
+        if (status !== undefined) this.onRequest?.(status);
         // Seen live: the free tier allows 20 requests per day; that 429 won't clear with backoff.
         if (status === 429 && /per day|daily/i.test((err as Error).message ?? "")) {
           this.exhausted = (err as Error).message;

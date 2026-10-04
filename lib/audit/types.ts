@@ -66,10 +66,60 @@ export type RenderAudit = z.infer<typeof renderAuditSchema>;
 /** JSON Schema sent to providers that support structured output (kept in sync with the zod schema). */
 export const renderAuditJsonSchema = z.toJSONSchema(renderAuditSchema);
 
+// ---------------- garment photo gate ----------------
+
+/** Problems that make a seller's garment photo a poor try-on reference (SPIKE.md). */
+export const GARMENT_PHOTO_PROBLEMS = [
+  "glass_or_reflection",
+  "folded",
+  "cropped",
+  "holding_object",
+  "extra_layers",
+  "multiple_garments",
+  "too_dark_or_blurry",
+  "not_a_garment",
+] as const;
+export type GarmentPhotoProblem = (typeof GARMENT_PHOTO_PROBLEMS)[number];
+
+export const garmentPhotoAuditSchema = z.object({
+  acceptable: z.boolean(),
+  problems: z.array(z.enum(GARMENT_PHOTO_PROBLEMS)),
+  /** what the photo shows, e.g. "saree draped on a mannequin" */
+  seen: z.string(),
+});
+export type GarmentPhotoAudit = z.infer<typeof garmentPhotoAuditSchema>;
+export const garmentPhotoAuditJsonSchema = z.toJSONSchema(garmentPhotoAuditSchema);
+
+export interface GarmentPhotoInput {
+  image: AuditImage;
+  garmentLabel: string;
+  category: string;
+  photoType: string;
+}
+
+export const GARMENT_GATE_PROMPT = `You are checking a seller's product photo before it is used as the reference
+for a virtual try-on of a "{label}" (category: {category}; the seller says it is a {photoType} photo).
+
+A good reference shows the WHOLE garment, front-facing, on a mannequin, a hanger, laid flat, or worn
+by a model who holds nothing and wears no extra layers over it, against a plain background.
+
+Report problems (only those clearly present):
+- glass_or_reflection: photographed behind glass, or strong reflections/glare on the garment
+- folded: the garment is folded, crumpled or bunched so its shape can't be seen
+- cropped: part of the garment is cut off by the frame edge
+- holding_object: a model holds a bag, phone or other object over or near the garment
+- extra_layers: a model or mannequin wears another garment over it (jacket, vest, shawl, a dupatta that is not part of the item)
+- multiple_garments: several different garments in the photo, unclear which is for sale
+- too_dark_or_blurry: too dark, blurry or low-resolution to see the garment
+- not_a_garment: no garment is the subject of the photo
+acceptable = true only if there are no problems. "seen" = one short phrase describing the photo.`;
+
 export interface RenderAuditor {
   /** e.g. "gemini:gemini-3.8-flash" */
   readonly name: string;
   auditRender(input: RenderAuditInput): Promise<RenderAudit>;
+  /** seller photo gate: is this a usable try-on reference? */
+  auditGarmentPhoto(input: GarmentPhotoInput): Promise<GarmentPhotoAudit>;
 }
 
 export const AUDIT_PROMPT = `You are checking a virtual try-on render for an Indian clothing seller.

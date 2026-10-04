@@ -115,6 +115,9 @@ describe("spike runner", () => {
   it("falls back to pixel checks when the audit fails, without failing the render", async () => {
     verdict.setAuditorForTests({
       name: "fake",
+      auditGarmentPhoto: async () => {
+        throw new Error("unused");
+      },
       auditRender: async () => {
         throw Object.assign(new Error("503 high demand"), { status: 503 });
       },
