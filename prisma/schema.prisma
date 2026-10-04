@@ -1,5 +1,6 @@
-// Schema-only until the bot phase: no database is provisioned yet.
-// Models (sellers, garments, try-on renders, orders, consent) land with the bot.
+// PehenKe core schema. Image bytes live only in Blob (see lib/storage); other
+// tables hold blob keys. Migrations run on DIRECT_URL (prisma.config.ts); the
+// app connects through the pooled DATABASE_URL (lib/db.ts).
 
 generator client {
   provider = "prisma-client"
@@ -8,4 +9,326 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+/// upper_body = top only; full_body = full outfit. lower_body is out of scope.
+enum Category {
+  upper_body
+  full_body
+}
+
+enum PhotoType {
+  flatlay
+  hanger
+  mannequin
+  worn
+}
+
+enum GarmentLength {
+  crop
+  waist
+  hip
+  knee
+  ankle
+  floor
+}
+
+enum GateStatus {
+  pending
+  approved
+  needs_review
+  rejected
+}
+
+enum Channel {
+  web
+  whatsapp
+}
+
+enum ConvState {
+  NEW
+  AWAIT_CONSENT
+  AWAIT_PHOTO
+  PICK_GARMENT
+  TRYON_RUNNING
+  PREVIEW
+  AWAIT_SELLER
+  ORDERED
+  DECLINED
+}
+
+enum Direction {
+  in
+  out
+}
+
+enum TryOnStatus {
+  queued
+  running
+  succeeded
+  failed
+  lost
+}
+
+enum CardVerdict {
+  send
+  send_with_disclosure
+  block
+}
+
+enum CardStatus {
+  pending_seller
+  approved
+  rejected
+}
+
+enum OrderOutcome {
+  pending
+  delivered
+  refused
+  cancelled
+}
+
+enum Framing {
+  full
+  chest
+  unknown
+}
+
+/// Image bytes, kept out of the main tables. Resized before storing.
+model Blob {
+  key         String   @id
+  contentType String
+  bytes       Bytes
+  size        Int
+  width       Int
+  height      Int
+  createdAt   DateTime @default(now())
+}
+
+model Seller {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  /// sha256 of the secret seller-link key
+  accessKeyHash String
+  /// seeded demo seller: chat may show a "Demo: open seller view" link
+  isDemo        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  garments      Garment[]
+  conversations Conversation[]
+  orders        Order[]
+  buyerPhotos   BuyerPhoto[]
+}
+
+model Garment {
+  id              String         @id @default(cuid())
+  sellerId        String
+  seller          Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  label           String
+  category        Category
+  photoType       PhotoType
+  length          GarmentLength?
+  priceInr        Int?
+  /// saree photo includes the blouse (otherwise the blouse is illustrative)
+  includesBlouse  Boolean        @default(false)
+  /// blouse / extra pieces, free text from the seller
+  notes           String?
+  photoKey        String
+  photoHash       String
+  photoW          Int
+  photoH          Int
+  gateStatus      GateStatus     @default(pending)
+  /// problem codes from the gate, e.g. ["glass_reflection","cropped"]
+  gateProblems    Json?
+  /// exact "send this instead" text shown to the seller
+  gateAdvice      String?
+  /// "gemini:<model>" | "rules"
+  gateBy          String?
+  gateAt          DateTime?
+  /// seller ticked the photo checklist (needs_review path)
+  sellerConfirmed Boolean        @default(false)
+  /// { source, author, licence, licenceUrl } for seeded images (/credits)
+  credit          Json?
+  active          Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+
+  tryOns TryOn[]
+  orders Order[]
+
+  @@unique([sellerId, photoHash])
+}
+
+model Buyer {
+  id         String   @id @default(cuid())
+  channel    Channel
+  /// web: random cookie id; whatsapp: phone number (later)
+  externalId String
+  createdAt  DateTime @default(now())
+
+  consents      Consent[]
+  photos        BuyerPhoto[]
+  conversations Conversation[]
+  orders        Order[]
+  tryOns        TryOn[]
+
+  @@unique([channel, externalId])
+}
+
+model Consent {
+  id        String    @id @default(cuid())
+  buyerId   String
+  buyer     Buyer     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  /// "photo_tryon"
+  kind      String
+  /// version of the consent text shown (copy.ts)
+  version   String
+  grantedAt DateTime  @default(now())
+  revokedAt DateTime?
+}
+
+/// A buyer's uploaded photo, or a seeded sample photo (isSample, no buyer).
+model BuyerPhoto {
+  id           String   @id @default(cuid())
+  buyerId      String?
+  buyer        Buyer?   @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  /// the seller chat it was uploaded in (for the funnel)
+  sellerId     String?
+  seller       Seller?  @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  isSample     Boolean  @default(false)
+  /// sample photos: display name and { source, author, licence, licenceUrl }
+  sampleName   String?
+  credit       Json?
+  blobKey      String
+  hash         String
+  width        Int
+  height       Int
+  framing      Framing
+  accepted     Boolean
+  rejectReason String?
+  createdAt    DateTime @default(now())
+
+  tryOns TryOn[]
+
+  @@index([buyerId])
+}
+
+model Conversation {
+  id            String    @id @default(cuid())
+  sellerId      String
+  seller        Seller    @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  buyerId       String
+  buyer         Buyer     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  channel       Channel
+  state         ConvState @default(NEW)
+  /// { photoId?, garmentId?, orderId? }
+  context       Json      @default("{}")
+  /// render this chat is waiting for
+  activeTryOnId String?
+  activeTryOn   TryOn?    @relation(fields: [activeTryOnId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  messages Message[]
+  orders   Order[]
+
+  @@unique([sellerId, buyerId, channel])
+  @@index([activeTryOnId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      Direction
+  /// text | image | buttons | card | status
+  kind           String
+  body           Json
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model TryOn {
+  id             String       @id @default(cuid())
+  /// sha256(garment photo hash | person photo hash | category | change_shoes | feature)
+  inputsHash     String       @unique
+  garmentId      String
+  garment        Garment      @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+  buyerPhotoId   String
+  buyerPhoto     BuyerPhoto   @relation(fields: [buyerPhotoId], references: [id], onDelete: Cascade)
+  /// buyer whose request started the render (null for pre-renders); per-buyer daily cap
+  requestedById  String?
+  requestedBy    Buyer?       @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  category       Category
+  changeShoes    Boolean      @default(false)
+  status         TryOnStatus  @default(queued)
+  /// YouCam task id, written before polling starts
+  taskId         String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  latencyMs      Int?
+  units          Int          @default(0)
+  /// units spent on a render the pixel checks then blocked
+  unitsWasted    Int          @default(0)
+  outputKey      String?
+  outputW        Int?
+  outputH        Int?
+  /// { regionUnchanged, changedPct, length? (advisory) }
+  pixelChecks    Json?
+  verdict        CardVerdict?
+  disclosureText String?
+  blockReason    String?
+  error          String?
+  createdAt      DateTime     @default(now())
+
+  waiting Conversation[]
+  orders  Order[]
+
+  @@index([status])
+  @@index([requestedById, createdAt])
+}
+
+model Order {
+  id             String       @id @default(cuid())
+  sellerId       String
+  seller         Seller       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  buyerId        String
+  buyer          Buyer        @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  garmentId      String
+  garment        Garment      @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  /// null once the buyer deletes their photos
+  tryOnId        String?
+  tryOn          TryOn?       @relation(fields: [tryOnId], references: [id], onDelete: SetNull)
+  cardStatus     CardStatus   @default(pending_seller)
+  disclosureText String?
+  /// what the seller saw when approving: pixel checks, verdict
+  pixelSummary   Json?
+  sellerNote     String?
+  decidedAt      DateTime?
+  outcome        OrderOutcome @default(pending)
+  outcomeAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([sellerId, createdAt])
+}
+
+/// Every YouCam / Gemini call, with units, for the daily caps and reporting.
+model ApiCall {
+  id         String   @id @default(cuid())
+  /// "youcam" | "gemini"
+  provider   String
+  endpoint   String
+  httpStatus Int?
+  units      Int      @default(0)
+  taskId     String?
+  tryOnId    String?
+  /// YYYY-MM-DD in Asia/Kolkata, for daily caps
+  day        String
+  createdAt  DateTime @default(now())
+
+  @@index([provider, day])
 }
