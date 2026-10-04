@@ -1,6 +1,20 @@
 # One row per garment image in spike-assets/garments. Sources: SOURCES.md
-# category: upper_body | lower_body | full_body | shoes   (sarees and lehengas: full_body)
-# photo_type: flatlay | hanger | mannequin | worn          (lower_body: worn only, max 2)
-file,label,category,photo_type
-choli-red.jpg,choli,upper_body,hanger
-saree-magenta.jpg,saree,full_body,flatlay
+# category: upper_body | lower_body | full_body | shoes   (lower_body is out of scope; sarees and lehengas: full_body)
+# photo_type: flatlay | hanger | mannequin | worn
+# length (optional): crop | waist | hip | knee | ankle | floor   (expected hem for the length guard; else from label)
+file,label,category,photo_type,length
+choli-red.jpg,choli,upper_body,hanger,crop
+saree-magenta.jpg,saree,full_body,flatlay,floor
+kurti-red.jpg,kurti,upper_body,worn,hip
+kurti-yellow.jpg,kurti,upper_body,worn,knee
+kurta-white-print.jpg,kurta,upper_body,worn,knee
+kurti-green-worn.jpg,kurti,upper_body,worn,knee
+dupatta-set-orange.jpg,dupatta set,full_body,worn,ankle
+lehenga-worn.jpg,lehenga,full_body,worn,floor
+lehenga-shop-mannequin.jpg,lehenga,full_body,mannequin,floor
+ghagra-museum-mannequin.jpg,lehenga,full_body,mannequin,floor
+saree-hung-flat.jpg,saree,full_body,hanger,floor
+saree-museum-mannequin.jpg,saree,full_body,mannequin,floor
+mens-kurta-pajama-flatlay.jpg,men's kurta,full_body,flatlay,ankle
+mens-kurta-vest.jpg,men's kurta,full_body,worn,ankle
+sherwani-behind-glass.jpg,sherwani,upper_body,hanger,knee
