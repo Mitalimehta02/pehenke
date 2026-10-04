@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { checkGarmentLength, defaultLength } from "./guards";
+import { checkGarmentLength, defaultLength } from "./length";
 
 const W = 400;
 const H = 1000;

@@ -3,7 +3,7 @@
 import "./loadEnv";
 import { readFileSync } from "node:fs";
 import { writeResultsCsv } from "./csv";
-import { defaultLength } from "./guards";
+import { defaultLength } from "@/lib/guards/length";
 import { analyseOutput, describe, report } from "./runner";
 import { loadCache, saveRecord } from "./store";
 import { auditAndDecide } from "./verdict";

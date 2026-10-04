@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import type { Framing } from "./store";
+import type { Framing } from "./types";
 
 /**
  * "What changed outside the garment" guard, pixels only (no API calls).

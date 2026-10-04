@@ -1,6 +1,6 @@
 import sharp from "sharp";
-import type { GarmentCategory } from "@/lib/youcam";
-import type { Framing } from "./store";
+import type { GarmentCategory } from "../youcam/types";
+import type { Framing } from "./types";
 
 /**
  * First-pass detector for "the API returned the original clothes": compare

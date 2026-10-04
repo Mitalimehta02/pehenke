@@ -4,7 +4,7 @@ import path from "node:path";
 import type { CallLogEntry, Feature, GarmentCategory } from "@/lib/youcam";
 import type { RenderAudit } from "@/lib/audit/types";
 import type { AuditStatus, VerdictResult } from "@/lib/verdict/cardVerdict";
-import type { GarmentLength, LengthResult } from "./guards";
+import type { GarmentLength, LengthResult } from "@/lib/guards/length";
 
 export const ROOT = process.cwd();
 // Overridable so tests never touch the real spike state.

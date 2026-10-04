@@ -14,8 +14,8 @@ import {
   type YouCamClient,
 } from "@/lib/youcam";
 import { youcamFromEnv } from "@/lib/youcam/server";
-import { checkBadRender } from "./badRender";
-import { checkGarmentLength } from "./guards";
+import { checkBadRender } from "@/lib/guards/badRender";
+import { checkGarmentLength } from "@/lib/guards/length";
 import { auditAndDecide } from "./verdict";
 import {
   GARMENTS_DIR,

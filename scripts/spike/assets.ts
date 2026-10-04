@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { GarmentCategory } from "@/lib/youcam";
-import { GARMENT_LENGTHS, defaultLength, type GarmentLength } from "./guards";
+import { GARMENT_LENGTHS, defaultLength, type GarmentLength } from "@/lib/guards/length";
 import { GARMENTS_CSV, GARMENTS_DIR, PEOPLE_DIR, sha256, type Framing, type PhotoType, type SkinToneJob, type TryOnJob } from "./store";
 
 export interface Garment {

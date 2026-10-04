@@ -11,6 +11,12 @@ const schema = z.object({
   DATABASE_URL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   /** Postgres, DIRECT (no "-pooler"): Prisma CLI / migrations only, read by prisma.config.ts */
   DIRECT_URL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  /** hard daily cap on YouCam units for the whole app (Asia/Kolkata day) */
+  YOUCAM_DAILY_UNIT_CAP: z.coerce.number().int().positive().default(60),
+  /** new (uncached) renders one buyer may start per day */
+  BUYER_DAILY_RENDERS: z.coerce.number().int().positive().default(6),
+  /** Gemini requests per day we allow ourselves (free tier allows 20) */
+  GEMINI_DAILY_LIMIT: z.coerce.number().int().nonnegative().default(18),
   /** render audit (optional): skipped cleanly when unset */
   GEMINI_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   GEMINI_MODEL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
