@@ -90,6 +90,12 @@ spec). If something isn't in the spec, say so instead of guessing.
   matched the cost table exactly.
 - Verified live costs: cloth-v3 = 2 units per result image;
   skin-tone-analysis = 20 units per result.
+- Verified live: `change_shoes` defaults to true for full_body and
+  lower_body, and footwear was swapped from the seller's photo. Send
+  `change_shoes: false` (buyers don't order shoes).
+- Verified live: `garment_category: auto` pulled extra items from worn and
+  mannequin photos (leggings, mannequin neck). Always send an explicit
+  category. Spike results and recommended scope: SPIKE.md.
 - Verified live: **try-on output is repeatable and every repeat is charged.**
   The same person + garment rendered 5 times (3 on the same file IDs, 2 on
   freshly uploaded new file IDs) gave byte-identical images, and each call
@@ -123,8 +129,10 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
   buyer photos need a paid tier, or explicit consent wording that covers
   this, before the pilot.
 - Free-tier rate limits are not published per model (only visible per
-  project in AI Studio): run one audit at a time, keep a gap between
-  requests, back off on 429/503. Never call it in parallel.
+  project in AI Studio). Seen live: **20 requests per day**, and ~55% of
+  requests returned 503 "high demand". Run one audit at a time, back off on
+  503/per-minute 429, fail fast on the daily 429. Not viable as the
+  production audit on the free tier.
 
 ## Conventions
 
