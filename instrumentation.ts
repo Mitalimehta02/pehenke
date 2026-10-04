@@ -5,7 +5,7 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  if (!process.env.YOUCAM_API_KEY || !process.env.DATABASE_URL) {
+  if (!process.env.YOUCAM_API_KEY || (!process.env.DATABASE_URL && process.env.LOCAL_PGLITE !== "1")) {
     console.warn("[boot] YOUCAM_API_KEY or DATABASE_URL missing: skipping resume and retention");
     return;
   }

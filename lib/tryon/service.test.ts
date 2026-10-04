@@ -1,20 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { PrismaClient } from "../generated/prisma/client";
 import { PrismaBlobStore } from "../storage/blobs";
-import { createTestDb } from "../testing/db";
+import { setupTestDb } from "../testing/db";
 import { FakeYouCam } from "../testing/fakeYoucam";
 import { addBuyerPhoto, seedBasics } from "../testing/fixtures";
 import { Ledger } from "../units/ledger";
 import { TryOnService } from "./service";
 
-let db: Awaited<ReturnType<typeof createTestDb>>;
+const db = setupTestDb();
 let prisma: PrismaClient;
-
-beforeEach(async () => {
-  db = await createTestDb();
+beforeEach(() => {
   prisma = db.prisma;
 });
-afterEach(async () => db.close());
 
 function setup(fake = new FakeYouCam(), caps = { youcamDailyUnits: 60, buyerDailyRenders: 6, geminiDailyLimit: 18 }) {
   const blobs = new PrismaBlobStore(prisma);

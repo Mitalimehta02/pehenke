@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, type App } from "../app";
-import { createTestDb } from "../testing/db";
+import { setupTestDb } from "../testing/db";
 import { FakeYouCam } from "../testing/fakeYoucam";
 import { addBuyerPhoto, personImage, seedBasics } from "../testing/fixtures";
 import { BTN, btn, type ChatMessage, type Incoming, type Outgoing } from "./types";
 import sharp from "sharp";
 
-let db: Awaited<ReturnType<typeof createTestDb>>;
+const db = setupTestDb();
 let fake: FakeYouCam;
 let app: App;
 let seed: Awaited<ReturnType<typeof seedBasics>>;
@@ -14,14 +14,12 @@ let seed: Awaited<ReturnType<typeof seedBasics>>;
 const CAPS = { youcamDailyUnits: 60, buyerDailyRenders: 6, geminiDailyLimit: 18 };
 
 beforeEach(async () => {
-  db = await createTestDb();
   fake = new FakeYouCam();
   app = createApp({ prisma: db.prisma, youcam: (l) => fake.client(l), caps: CAPS });
   seed = await seedBasics(db.prisma, app.blobs);
 });
 afterEach(async () => {
   await app.tryOns.idle();
-  await db.close();
 });
 
 const base = (buyer = "cookie-1") => ({ channel: "web" as const, sellerSlug: "asha-sarees", buyerExternalId: buyer });

@@ -15,7 +15,10 @@
     "spike:recheck": "tsx --conditions=react-server scripts/spike/recheck.ts",
     "spike:audit": "tsx --conditions=react-server scripts/spike/audit.ts",
     "spike:report": "tsx --conditions=react-server scripts/spike/report.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:seed": "tsx --conditions=react-server prisma/seed.ts",
+    "db:migrate": "prisma migrate deploy",
+    "dev:local": "cross-env LOCAL_PGLITE=1 YOUCAM_FAKE=1 next dev"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",
@@ -33,10 +36,12 @@
     "@types/node": "^24.19.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^10.1.0",
     "dotenv": "^18.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "pglite-prisma-adapter": "^0.7.2",
+    "playwright-core": "^1.63.0",
     "prisma": "^7.10.0",
     "tsx": "^4.23.15",
     "typescript": "^5",

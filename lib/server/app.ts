@@ -1,23 +1,41 @@
 import "server-only";
 import { auditorFromEnv } from "../audit";
 import { createApp, type App } from "../app";
-import { db } from "../db";
+import { dbAsync } from "../db";
 import { serverEnv } from "../env";
-import { YouCamClient } from "../youcam";
+import { spikeRenderLookup } from "../testing/devRenders";
+import { FakeYouCam } from "../testing/fakeYoucam";
+import { YouCamClient, type CallLogger } from "../youcam";
 
 /** One app instance per server process (reused across Next dev hot reloads). */
-const g = globalThis as unknown as { pehenkeApp?: App; pehenkeBoot?: Promise<void> };
+const g = globalThis as unknown as { pehenkeApp?: Promise<App>; pehenkeBoot?: Promise<void>; pehenkeFake?: FakeYouCam };
 
-export function getApp(): App {
-  if (!g.pehenkeApp) {
+/** Local development only: YOUCAM_FAKE=1 renders with the in-memory fake (no units). Ignored in production. */
+async function youcamFactory(): Promise<(logger: CallLogger) => YouCamClient> {
+  const env = serverEnv();
+  if (process.env.YOUCAM_FAKE === "1" && process.env.NODE_ENV !== "production") {
+    g.pehenkeFake ??= new FakeYouCam({ runningPolls: 3, renderFrom: await spikeRenderLookup() });
+    console.warn("[dev] YOUCAM_FAKE=1: try-ons use the fake renderer, no units spent");
+    return (logger) => {
+      const c = g.pehenkeFake!.client(logger);
+      // pace the fake like the real API so the "working" state is visible
+      (c.http as unknown as { sleep: (ms: number) => Promise<void> }).sleep = (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 1500)));
+      return c;
+    };
+  }
+  return (logger) => new YouCamClient({ apiKey: env.YOUCAM_API_KEY, secretKey: env.YOUCAM_SECRET_KEY, baseUrl: env.YOUCAM_BASE_URL, logger });
+}
+
+export function getApp(): Promise<App> {
+  g.pehenkeApp ??= (async () => {
     const env = serverEnv();
-    g.pehenkeApp = createApp({
-      prisma: db(),
-      youcam: (logger) => new YouCamClient({ apiKey: env.YOUCAM_API_KEY, secretKey: env.YOUCAM_SECRET_KEY, baseUrl: env.YOUCAM_BASE_URL, logger }),
+    return createApp({
+      prisma: await dbAsync(),
+      youcam: await youcamFactory(),
       caps: { youcamDailyUnits: env.YOUCAM_DAILY_UNIT_CAP, buyerDailyRenders: env.BUYER_DAILY_RENDERS, geminiDailyLimit: env.GEMINI_DAILY_LIMIT },
       auditor: (onRequest) => auditorFromEnv(onRequest),
     });
-  }
+  })();
   return g.pehenkeApp;
 }
 
@@ -30,7 +48,7 @@ const PURGE_EVERY_MS = 60 * 60_000;
  */
 export function boot(): Promise<void> {
   g.pehenkeBoot ??= (async () => {
-    const app = getApp();
+    const app = await getApp();
     try {
       const r = await app.tryOns.resumeAll();
       if (r.resumed || r.abandoned) console.log(`[boot] try-ons resumed: ${r.resumed}, abandoned: ${r.abandoned}`);

@@ -51,3 +51,6 @@ next-env.d.ts
 
 # prisma generated client (bot phase)
 /lib/generated/
+
+# local dev database (LOCAL_PGLITE=1)
+/.pglite/

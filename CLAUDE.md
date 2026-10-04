@@ -144,6 +144,22 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
   503/per-minute 429, fail fast on the daily 429. Not viable as the
   production audit on the free tier.
 
+## Core phase layout (web mirror first; WhatsApp later)
+
+- `lib/engine/`: channel-agnostic state machine, `handle(incoming) -> outgoing`; all
+  buyer text in `copy.ts`, seller text in `sellerCopy.ts` (English now, Hindi later).
+- `lib/tryon/service.ts`: render jobs. Cache by inputs hash, caps checked first, task id
+  persisted before polling, resume on server start (`instrumentation.ts`).
+- `lib/gate/`: seller photo gate, once per garment photo; Gemini via RenderAuditor within
+  GEMINI_DAILY_LIMIT, else "needs your check" (seller checklist).
+- `lib/consent/`: consent, "delete my photos" (here and at YouCam via task delete),
+  30-day retention purge.
+- `lib/storage/blobs.ts`: image bytes only in the Blob table (Postgres for now, behind
+  BlobStore). Nothing may depend on local disk (Render wipes it).
+- Order cards are never auto-sent: the seller approves each one.
+- Tests run the real migrations on in-process PGlite (`lib/testing/db.ts`) with a fake
+  YouCam (`lib/testing/fakeYoucam.ts`). No network, no units.
+
 ## Conventions
 
 - **API budget**: 1,000 units total; the spike is hard-capped at 300
@@ -163,6 +179,9 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
 - `npm run spike:costs` — free: feature-cost table + balance check
 - `npm run spike` — dry run: plan + cost estimate, spends nothing
 - `npm run spike -- --yes` — real run (only after human approval)
+- `npm run db:migrate` — apply migrations (prisma migrate deploy, uses DIRECT_URL; needs port 5432)
+- `npm run db:seed` — idempotent demo data (demo seller, garments through the real photo gate, sample photos; credits from spike-assets/SOURCES.md). No units.
+- `npm run dev:local` — local dev without Neon or units: LOCAL_PGLITE=1 (file-backed in-process Postgres in .pglite/) and YOUCAM_FAKE=1 (fake renderer that reuses real spike renders when available). Both flags are ignored in production.
 - `npm run spike:skintone -- --person <file>` — dry run; add `--yes` to spend
 - `npm run spike -- --repeat N ...` — repeatability: N extra renders per job,
   cached under their own keys (the only sanctioned cache bypass)

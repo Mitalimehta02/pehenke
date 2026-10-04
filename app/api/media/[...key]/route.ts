@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/media/[...key]">) {
   const key = (await ctx.params).key.join("/");
-  const app = getApp();
+  const app = await getApp();
   if (!(await allowed(key, req))) return new NextResponse("not found", { status: 404 });
   const blob = await app.blobs.get(key);
   if (!blob) return new NextResponse("not found", { status: 404 });
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/media/[...ke
 }
 
 async function allowed(key: string, req: NextRequest): Promise<boolean> {
-  const { prisma } = getApp();
+  const { prisma } = await getApp();
   if (key.startsWith("garment/") || key.startsWith("sample/")) return true;
 
   const buyerExternalId = await readBuyerId();

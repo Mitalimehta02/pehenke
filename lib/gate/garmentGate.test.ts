@@ -1,16 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { GarmentPhotoAudit, RenderAuditor } from "../audit/types";
 import { GarmentService, isTryable } from "../garments/service";
 import { PrismaBlobStore } from "../storage/blobs";
-import { createTestDb } from "../testing/db";
+import { setupTestDb } from "../testing/db";
 import { garmentImage } from "../testing/fixtures";
 import { Ledger } from "../units/ledger";
 import { GarmentGate } from "./garmentGate";
 import sharp from "sharp";
 
-let db: Awaited<ReturnType<typeof createTestDb>>;
-beforeEach(async () => (db = await createTestDb()));
-afterEach(async () => db.close());
+const db = setupTestDb();
 
 function auditor(result: GarmentPhotoAudit | Error, onCall?: () => void): RenderAuditor {
   return {

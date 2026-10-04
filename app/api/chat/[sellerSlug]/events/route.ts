@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/chat/[sellerSlug]/events">) {
   const { sellerSlug } = await ctx.params;
-  const app = getApp();
+  const app = await getApp();
   const conv = await app.engine.findConversation(sellerSlug, "web", await buyerId());
   if (!conv) return NextResponse.json({ messages: [], state: "NEW" });
   const after = req.nextUrl.searchParams.get("after") ?? undefined;

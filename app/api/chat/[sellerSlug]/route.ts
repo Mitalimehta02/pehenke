@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/chat/[sellerSlug]">) {
   const { sellerSlug } = await ctx.params;
-  const app = getApp();
+  const app = await getApp();
   const conv = await app.engine.findConversation(sellerSlug, "web", await buyerId());
   if (!conv) return NextResponse.json({ messages: [], state: "NEW" });
   return NextResponse.json({ messages: await app.engine.messagesSince(conv.id), state: conv.state });
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/chat/[selle
   }
 
   try {
-    const app = getApp();
+    const app = await getApp();
     const r = await app.engine.handle(incoming);
     const conv = await app.engine.findConversation(sellerSlug, "web", base.buyerExternalId);
     return NextResponse.json({ messages: r.messages, state: conv?.state ?? "NEW" });

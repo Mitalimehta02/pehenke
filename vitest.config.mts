@@ -13,5 +13,8 @@ export default defineConfig({
   },
   test: {
     include: ["lib/**/*.test.ts", "scripts/**/*.test.ts"],
+    // PGlite (in-process Postgres) start-up is slow on a busy machine
+    hookTimeout: 120_000,
+    testTimeout: 60_000,
   },
 });

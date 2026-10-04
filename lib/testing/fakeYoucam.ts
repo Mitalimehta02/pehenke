@@ -16,13 +16,15 @@ export interface FakeYouCamOptions {
   taskError?: string;
   /** answer polls with InvalidTaskId (task lost) */
   lose?: boolean;
+  /** dev only: return a real render for these inputs if known (else the synthetic one) */
+  renderFrom?: (src: Uint8Array, ref: Uint8Array) => Promise<Buffer | null>;
 }
 
 export class FakeYouCam {
   readonly starts: Array<{ taskId: string; body: Record<string, unknown> }> = [];
   readonly deletes: string[] = [];
   private files = new Map<string, Uint8Array>();
-  private tasks = new Map<string, { src: string; polls: number }>();
+  private tasks = new Map<string, { src: string; ref: string; polls: number }>();
   private n = 0;
 
   constructor(public opts: FakeYouCamOptions = {}) {}
@@ -45,7 +47,8 @@ export class FakeYouCam {
     }
     if (url.host === "cdn.fake") {
       const task = this.tasks.get(url.pathname.slice(1).replace(/\.jpg$/, ""))!;
-      return new Response(new Uint8Array(await this.render(this.files.get(task.src)!)), { status: 200, headers: { "content-type": "image/jpeg" } });
+      const real = await this.opts.renderFrom?.(this.files.get(task.src)!, this.files.get(task.ref)!);
+      return new Response(new Uint8Array(real ?? (await this.render(this.files.get(task.src)!))), { status: 200, headers: { "content-type": "image/jpeg" } });
     }
     if (url.pathname === "/s2s/v2.0/file/cloth-v3" && method === "POST") {
       const id = `file-${++this.n}`;
@@ -59,7 +62,7 @@ export class FakeYouCam {
       }
       const body = JSON.parse(String(init?.body));
       const taskId = `task-${++this.n}`;
-      this.tasks.set(taskId, { src: body.src_file_id, polls: 0 });
+      this.tasks.set(taskId, { src: body.src_file_id, ref: body.ref_file_id, polls: 0 });
       this.starts.push({ taskId, body });
       return this.json(200, { status: 200, data: { task_id: taskId } });
     }
