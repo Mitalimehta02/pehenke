@@ -20,9 +20,6 @@ const CATEGORIES = ["upper_body", "lower_body", "full_body", "shoes"] as const;
 const PHOTO_TYPES = ["flatlay", "hanger", "mannequin", "worn"] as const;
 const IMAGE_EXT = /\.(jpe?g|png)$/i;
 
-/** Max lower-body garments the spike may test (plan change B). */
-export const MAX_LOWER_BODY = 2;
-
 export function loadGarments(): Garment[] {
   if (!existsSync(GARMENTS_CSV)) throw new Error(`Missing ${path.relative(process.cwd(), GARMENTS_CSV)} (columns: file,label,category,photo_type)`);
   const lines = readFileSync(GARMENTS_CSV, "utf8")
@@ -43,8 +40,6 @@ export function loadGarments(): Garment[] {
     if (file && !existsSync(path.join(GARMENTS_DIR, file))) errors.push(`${where}: ${file} not found in spike-assets/garments`);
     return { file, label, category, photoType } as Garment;
   });
-  const lower = garments.filter((g) => g.category === "lower_body");
-  if (lower.length > MAX_LOWER_BODY) errors.push(`garments.csv lists ${lower.length} lower_body garments; the spike tests at most ${MAX_LOWER_BODY}`);
   if (errors.length) throw new Error(errors.join("\n"));
 
   const listed = new Set(garments.map((g) => g.file));
@@ -92,9 +87,9 @@ export function planTryOns(garments: Garment[], people: Person[], f: PlanFilters
 
   const jobs: TryOnJob[] = [];
   for (const g of gs) {
-    // Plan change B: never spend units on lower-body product shots.
-    if (g.category === "lower_body" && g.photoType !== "worn") {
-      skipped.push({ what: g.file, reason: `lower_body as ${g.photoType}: only worn photos are tested` });
+    // Lower-body garments are out of scope (see CLAUDE.md): never spend units on them.
+    if (g.category === "lower_body") {
+      skipped.push({ what: g.file, reason: "lower_body is out of scope" });
       continue;
     }
     const garmentHash = fileHash(GARMENTS_DIR, g.file);

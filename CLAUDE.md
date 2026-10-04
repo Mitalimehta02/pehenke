@@ -15,6 +15,11 @@ Later phases: catalogue built from forwarded product posts, complete-the-look
 **Current phase: setup + API spike.** The bot does not exist yet. Don't build
 bot features unless asked.
 
+**Out of scope: lower-body garments** (salwars, palazzos, skirts, jeans sold
+on their own). YouCam needs worn photos for them, which sellers rarely post.
+The spike planner skips any `lower_body` row; don't spend units on them.
+Full-body garments (sarees, lehengas, kurta sets) stay in scope.
+
 ## Stack
 
 - Next.js 16 (App Router) + TypeScript, one project. Next 16 differs from
