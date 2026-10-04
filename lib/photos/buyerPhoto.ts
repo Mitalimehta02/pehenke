@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Metadata } from "sharp";
 
 /**
  * Buyer photo check, pixels only (no vision model on buyer photos).
@@ -25,7 +25,7 @@ export type PhotoCheck =
 
 export async function checkBuyerPhoto(bytes: Uint8Array): Promise<PhotoCheck> {
   if (bytes.byteLength > MAX_UPLOAD_BYTES) return { ok: false, reason: "too_large" };
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await sharp(bytes).metadata();
   } catch {
