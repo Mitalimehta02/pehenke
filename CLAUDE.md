@@ -79,10 +79,20 @@ spec). If something isn't in the spec, say so instead of guessing.
 - Verified live: feature-cost rejects `starting_token=null` (400) although
   the docs say to start with `null`; omit it on the first page.
 - Verified live: the balance endpoint accepts both the V2 API key and a V1
-  token (secret key, RSA PKCS#1 v1.5) but returned `results: []` for our
-  account, so it can't be relied on for budgeting yet.
+  token (secret key, RSA PKCS#1 v1.5). It returned `results: []` before
+  units were credited, then real entries (ApiPaygToken grants with expiry).
+  Treat an empty list as "unknown", never as 0. Per-call balance deltas
+  matched the cost table exactly.
 - Verified live costs: cloth-v3 = 2 units per result image;
   skin-tone-analysis = 20 units per result.
+
+## Skin tone: expensive, call once per buyer
+
+Skin tone analysis costs 20 units, 10x a try-on. Call it **at most once per
+buyer**, on their first usable selfie, and cache the result (skin, lip,
+eye, hair colours) against the buyer. Every later feature (lip shade,
+jewellery, complete-the-look) reads the cached result; never re-analyse
+the same buyer, and never call it speculatively or per message.
 
 ## Conventions
 
