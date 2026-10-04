@@ -9,7 +9,6 @@ const AUDIT: RenderAudit = {
   added_items: [{ item: "pearl necklace", kind: "jewellery", location: "neck" }],
   person_changes: { face_changed: false, hair_changed: false, background_changed: false, notes: "" },
   drape: "natural",
-  usable_as_order_card: false,
   summary: "Invented necklace.",
 };
 

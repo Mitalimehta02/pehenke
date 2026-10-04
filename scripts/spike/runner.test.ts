@@ -14,6 +14,7 @@ process.env.SPIKE_UNIT_CAP = "50";
 const store = await import("./store");
 const runner = await import("./runner");
 const assets = await import("./assets");
+const verdict = await import("./verdict");
 
 const API = "https://api.example.test";
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -109,6 +110,25 @@ describe("spike runner", () => {
     await runner.executeJob(client, jobs[0]);
     await expect(runner.executeJob(client, jobs[1])).rejects.toBeInstanceOf(runner.BudgetStop);
     expect(starts).toBe(2);
+  });
+
+  it("falls back to pixel checks when the audit fails, without failing the render", async () => {
+    verdict.setAuditorForTests({
+      name: "fake",
+      auditRender: async () => {
+        throw Object.assign(new Error("503 high demand"), { status: 503 });
+      },
+    });
+    writeFileSync(path.join(store.PEOPLE_DIR, "mina-full.jpg"), await photo("#0055aa"));
+    const job = assets.planTryOns(assets.loadGarments(), assets.loadPeople(), { people: ["mina"] }).jobs[0];
+    process.env.SPIKE_UNIT_CAP = "1000";
+    const rec = await runner.executeJob(client, job);
+    expect(rec.status).toBe("success");
+    expect(rec.audit?.status).toBe("unavailable");
+    // a verdict is still made, from pixel checks alone (this synthetic image may block on length)
+    expect(rec.verdict?.audit_status).toBe("unavailable");
+    expect(["send_with_disclosure", "block"]).toContain(rec.verdict?.card_verdict);
+    verdict.setAuditorForTests(null);
   });
 
   it("writes results.csv with the requested columns", async () => {

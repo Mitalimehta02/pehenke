@@ -16,6 +16,7 @@ import {
 import { youcamFromEnv } from "@/lib/youcam/server";
 import { checkBadRender } from "./badRender";
 import { checkGarmentLength } from "./guards";
+import { auditAndDecide } from "./verdict";
 import {
   GARMENTS_DIR,
   IMAGES_DIR,
@@ -274,6 +275,8 @@ async function saveTryOnOutput(client: YouCamClient, p: PendingTask, status: Tas
   rec.outputHeight = meta.height;
 
   Object.assign(rec, await analyseOutput(job, dl.bytes));
+  // render audit (one at a time, free tier) + card verdict; never blocks the run
+  await auditAndDecide(rec, { callProvider: true });
 }
 
 /** Pixel guards on a try-on output: bad render (original clothes returned) and garment length. Free. */
@@ -310,6 +313,7 @@ export function report(rec: ResultRecord) {
   if (rec.error) parts.push(`error ${rec.error}${rec.errorMessage ? `: ${rec.errorMessage}` : ""}`);
   if (rec.outputPath) parts.push(rec.outputPath);
   if (rec.badRender) parts.push(`region changed ${(rec.badRender.changedPct * 100).toFixed(0)}%${rec.badRender.flagged ? " BAD-RENDER FLAG" : ""}`);
+  if (rec.verdict) parts.push(`CARD: ${rec.verdict.card_verdict}${rec.verdict.block_reason ? ` (${rec.verdict.block_reason})` : ""} [audit ${rec.verdict.audit_status}]`);
   if (rec.lengthCheck) parts.push(`hem ${rec.lengthCheck.hemPos.toFixed(2)} (expected ${rec.lengthCheck.expected})${rec.lengthCheck.flagged ? " LENGTH FLAG" : ""}`);
   console.log(parts.join(" | "));
 }

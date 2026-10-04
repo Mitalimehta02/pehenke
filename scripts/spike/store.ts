@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeF
 import path from "node:path";
 import type { CallLogEntry, Feature, GarmentCategory } from "@/lib/youcam";
 import type { RenderAudit } from "@/lib/audit/types";
+import type { AuditStatus, VerdictResult } from "@/lib/verdict/cardVerdict";
 import type { GarmentLength, LengthResult } from "./guards";
 
 export const ROOT = process.cwd();
@@ -97,8 +98,10 @@ export interface ResultRecord {
   badRender?: { flagged: boolean; changedPct: number; aspectChanged: boolean };
   /** garment length guard (full-body framing only) */
   lengthCheck?: LengthResult;
-  /** vision-model render audit (spike:audit) */
-  audit?: { provider: string; path: string; result: RenderAudit };
+  /** vision-model render audit; status "ok" carries the result */
+  audit?: { status: AuditStatus; provider?: string; path?: string; result?: RenderAudit; error?: string };
+  /** order-card verdict from audit + pixel checks */
+  verdict?: VerdictResult;
   skinTone?: unknown;
 }
 
