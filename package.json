@@ -13,7 +13,8 @@
     "spike:costs": "tsx --conditions=react-server scripts/spike/costs.ts",
     "spike:skintone": "tsx --conditions=react-server scripts/spike/skintone.ts",
     "spike:recheck": "tsx --conditions=react-server scripts/spike/recheck.ts",
-    "spike:audit": "tsx --conditions=react-server scripts/spike/audit.ts"
+    "spike:audit": "tsx --conditions=react-server scripts/spike/audit.ts",
+    "spike:report": "tsx --conditions=react-server scripts/spike/report.ts"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",

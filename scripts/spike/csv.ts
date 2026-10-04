@@ -75,7 +75,7 @@ export function writeResultsCsv(records: ResultRecord[]): string {
         clothing_region_changed_pct: r.badRender ? (r.badRender.changedPct * 100).toFixed(1) : "",
         aspect_changed: r.badRender ? (r.badRender.aspectChanged ? "yes" : "no") : "",
         expected_length: r.lengthCheck?.expected ?? j.expectedLength,
-        hem_pos: r.lengthCheck?.hemPos.toFixed(2),
+        hem_pos: r.lengthCheck ? (r.lengthCheck.determined === false ? "unknown" : r.lengthCheck.hemPos.toFixed(2)) : "",
         length_flag: r.lengthCheck ? (r.lengthCheck.flagged ? "yes" : "no") : "",
         card_verdict: r.verdict?.card_verdict,
         disclosure_text: r.verdict?.disclosure_text,

@@ -49,7 +49,18 @@ export interface LengthResult {
   expected: GarmentLength;
   /** hem position as a fraction of the person's height (0 = head top, 1 = feet) */
   hemPos: number;
+  /**
+   * false when the garment's colours couldn't be found in the output (e.g. a
+   * worn or mannequin reference whose palette mixes in skin and background):
+   * the hem is unknown, so nothing is flagged.
+   */
+  determined: boolean;
 }
+
+/** fewer garment-coloured rows than this fraction of body height = hem undetermined */
+const MIN_GARMENT_ROWS = 0.08;
+/** a row belongs to the garment when this fraction of the person's width matches its colours */
+const ROW_COVERAGE = 0.25;
 
 /** colour distance under which a pixel "matches" a palette colour (RGB) */
 const PALETTE_MATCH = 42;
@@ -165,6 +176,7 @@ export async function checkGarmentLength(opts: {
   const keptPal = palette(sample(keptPts, 6000), 10);
 
   let hem = person.top;
+  let garmentRows = 0;
   for (let y = person.top; y <= person.bottom; y++) {
     let row = 0;
     let width = 0;
@@ -175,14 +187,20 @@ export async function checkGarmentLength(opts: {
       const p = px(b, x, y);
       if (changed[i] && near(p, garmentPal) && !near(p, keptPal)) row++;
     }
-    if (width && row / width > 0.25) hem = y;
+    if (width && row / width > 0.25) {
+      hem = y;
+      garmentRows++;
+    }
   }
-  const hemPos = (hem - person.top) / Math.max(1, person.bottom - person.top);
+  const span = Math.max(1, person.bottom - person.top);
+  const hemPos = (hem - person.top) / span;
+  const determined = garmentRows / span >= MIN_GARMENT_ROWS;
   const [lo, hi] = LENGTHS[opts.expectedLength];
   return {
     expected: opts.expectedLength,
     hemPos,
-    flagged: hemPos < lo - LENGTH_TOLERANCE || hemPos > hi + LENGTH_TOLERANCE,
+    determined,
+    flagged: determined && (hemPos < lo - LENGTH_TOLERANCE || hemPos > hi + LENGTH_TOLERANCE),
   };
 }
 

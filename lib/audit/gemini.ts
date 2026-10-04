@@ -42,6 +42,8 @@ export class GeminiAuditor implements RenderAuditor {
   private readonly create: (params: object) => Promise<{ output_text?: string }>;
   private queue: Promise<unknown> = Promise.resolve();
   private lastStart = 0;
+  /** set when the daily quota is exhausted: later audits fail fast instead of retrying */
+  private exhausted: string | undefined;
 
   constructor(opts: GeminiAuditorOptions) {
     this.model = opts.model ?? DEFAULT_GEMINI_MODEL;
@@ -66,6 +68,7 @@ export class GeminiAuditor implements RenderAuditor {
   }
 
   private async auditOnce(input: RenderAuditInput): Promise<RenderAudit> {
+    if (this.exhausted) throw new Error(`${this.name} daily quota exhausted: ${this.exhausted}`);
     const [person, garment, output] = await Promise.all([shrink(input.person), shrink(input.garment), shrink(input.output)]);
     const prompt = AUDIT_PROMPT.replace("{label}", input.garmentLabel).replace("{category}", input.category);
     const params = {
@@ -93,6 +96,11 @@ export class GeminiAuditor implements RenderAuditor {
         return renderAuditSchema.parse(JSON.parse(res.output_text));
       } catch (err) {
         const status = statusOf(err);
+        // Seen live: the free tier allows 20 requests per day; that 429 won't clear with backoff.
+        if (status === 429 && /per day|daily/i.test((err as Error).message ?? "")) {
+          this.exhausted = (err as Error).message;
+          throw err;
+        }
         const retryable = status === 429 || status === 503;
         if (!retryable || attempt >= this.maxAttempts) throw err;
         const backoff = Math.min(5000 * 2 ** (attempt - 1), 60_000);

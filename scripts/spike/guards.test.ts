@@ -37,6 +37,14 @@ describe("checkGarmentLength", () => {
     expect(r?.flagged).toBe(false);
   });
 
+  it("reports an undetermined hem instead of flagging when the garment colours aren't found", async () => {
+    const input = await person(null, 620);
+    const output = await person("#1e6bd6", 560);
+    const r = await checkGarmentLength({ input, output, garment: await garmentPhoto("#22aa22"), framing: "full", expectedLength: "crop" });
+    expect(r?.determined).toBe(false);
+    expect(r?.flagged).toBe(false);
+  });
+
   it("is skipped for chest framing", async () => {
     const img = await person("#1e6bd6", 420);
     expect(await checkGarmentLength({ input: img, output: img, garment: img, framing: "chest", expectedLength: "crop" })).toBeUndefined();

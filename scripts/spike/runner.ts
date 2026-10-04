@@ -319,6 +319,6 @@ export function report(rec: ResultRecord) {
   if (rec.outputPath) parts.push(rec.outputPath);
   if (rec.badRender) parts.push(`region changed ${(rec.badRender.changedPct * 100).toFixed(0)}%${rec.badRender.flagged ? " BAD-RENDER FLAG" : ""}`);
   if (rec.verdict) parts.push(`CARD: ${rec.verdict.card_verdict}${rec.verdict.block_reason ? ` (${rec.verdict.block_reason})` : ""} [audit ${rec.verdict.audit_status}]`);
-  if (rec.lengthCheck) parts.push(`hem ${rec.lengthCheck.hemPos.toFixed(2)} (expected ${rec.lengthCheck.expected})${rec.lengthCheck.flagged ? " LENGTH FLAG" : ""}`);
+  if (rec.lengthCheck) parts.push(rec.lengthCheck.determined === false ? `hem unknown (expected ${rec.lengthCheck.expected})` : `hem ${rec.lengthCheck.hemPos.toFixed(2)} (expected ${rec.lengthCheck.expected})${rec.lengthCheck.flagged ? " LENGTH FLAG" : ""}`);
   console.log(parts.join(" | "));
 }

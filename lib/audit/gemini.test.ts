@@ -57,6 +57,22 @@ describe("GeminiAuditor", () => {
     expect(sleeps).toEqual([5000, 10000]);
   });
 
+  it("stops retrying and fails fast once the daily quota is exhausted", async () => {
+    let n = 0;
+    const a = new GeminiAuditor({
+      apiKey: "k",
+      minGapMs: 0,
+      sleep: async () => {},
+      create: async () => {
+        n++;
+        throw Object.assign(new Error("429 Rate limit exceeded (limit: 20 requests per day on Free Tier)"), { status: 429 });
+      },
+    });
+    await expect(a.auditRender(await input())).rejects.toThrow(/per day/);
+    await expect(a.auditRender(await input())).rejects.toThrow(/daily quota exhausted/);
+    expect(n).toBe(1);
+  });
+
   it("does not retry other errors", async () => {
     let n = 0;
     const a = new GeminiAuditor({
