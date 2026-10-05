@@ -9,7 +9,7 @@ export default function Home() {
       <ol className={styles.lines}>
         <li>Small clothing sellers on WhatsApp share outfits, but buyers can&apos;t tell how they&apos;ll look.</li>
         <li>PehenKe lets a buyer send one photo and see the seller&apos;s outfit on themselves, in the chat.</li>
-        <li>That try-on becomes the order confirmation card, so fewer cash-on-delivery orders get refused.</li>
+        <li>That try-on becomes the order confirmation card, designed to reduce refused cash-on-delivery orders.</li>
       </ol>
       <Link href="/chat/meera-boutique" className={styles.cta}>
         Try the demo

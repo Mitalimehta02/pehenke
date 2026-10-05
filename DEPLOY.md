@@ -1,5 +1,7 @@
 # Deploying PehenKe on Render (free web service)
 
+**Live:** https://pehenke.onrender.com · health: https://pehenke.onrender.com/api/health
+
 Target: Render **Free** web service (512 MB RAM, sleeps after 15 min without inbound traffic,
 ~1 min to wake, no persistent disk), region **Ohio** (same as Neon us-east-2).
 Facts below are from Render's docs (deploys, free, node-version, health-checks pages).

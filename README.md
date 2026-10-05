@@ -2,9 +2,12 @@
 
 **See it on you before you buy.** A try-on assistant for small Indian clothing sellers who sell
 over chat: a buyer sends one photo and sees the seller's outfit on themselves, and that try-on
-becomes the order confirmation card, to cut cash-on-delivery refusals.
+becomes the order confirmation card, designed to reduce cash-on-delivery refusals.
 
 Built for the YouCam API Skin AI & eCommerce VTO Hackathon. Web chat demo now; WhatsApp next.
+
+**Live demo:** https://pehenke.onrender.com (free instance: the first visit after a quiet spell
+takes about a minute to wake up).
 
 ## What's here
 
