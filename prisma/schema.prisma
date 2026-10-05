@@ -52,6 +52,7 @@ enum ConvState {
   PICK_GARMENT
   TRYON_RUNNING
   PREVIEW
+  AWAIT_PHONE
   AWAIT_SELLER
   ORDERED
   DECLINED
@@ -172,6 +173,7 @@ model Buyer {
   conversations Conversation[]
   orders        Order[]
   tryOns        TryOn[]
+  familyVotes   FamilyVote[]
 
   @@unique([channel, externalId])
 }
@@ -230,8 +232,9 @@ model Conversation {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  messages Message[]
-  orders   Order[]
+  messages    Message[]
+  orders      Order[]
+  familyVotes FamilyVote[]
 
   @@unique([sellerId, buyerId, channel])
   @@index([activeTryOnId])
@@ -283,8 +286,9 @@ model TryOn {
   error          String?
   createdAt      DateTime     @default(now())
 
-  waiting Conversation[]
-  orders  Order[]
+  waiting     Conversation[]
+  orders      Order[]
+  familyVotes FamilyVote[]
 
   @@index([status])
   @@index([requestedById, createdAt])
@@ -311,9 +315,55 @@ model Order {
   decidedAt      DateTime?
   outcome        OrderOutcome @default(pending)
   outcomeAt      DateTime?
+  /// buyer's WhatsApp number (E.164), asked only at order time; deleted with their photos
+  buyerWhatsapp  String?
+  /// unguessable token for the public card link /card/<token>; cleared when the buyer deletes their photos
+  cardToken      String?      @unique
+  /// rendered confirmation card image (blob key)
+  cardImageKey   String?
+  /// seller opened "Send to buyer on WhatsApp" (first time)
+  cardSentAt     DateTime?
+  /// seller marked the order dispatched
+  dispatchedAt   DateTime?
   createdAt      DateTime     @default(now())
 
   @@index([sellerId, createdAt])
+}
+
+/// "Ask family": a public, expiring link to one try-on image with yes/no votes.
+model FamilyVote {
+  id             String         @id @default(cuid())
+  /// unguessable token in the public link /v/<token>
+  token          String         @unique
+  tryOnId        String
+  tryOn          TryOn          @relation(fields: [tryOnId], references: [id], onDelete: Cascade)
+  buyerId        String
+  buyer          Buyer          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  garmentLabel   String
+  expiresAt      DateTime
+  createdAt      DateTime       @default(now())
+
+  responses FamilyVoteResponse[]
+
+  @@index([buyerId])
+  @@index([expiresAt])
+}
+
+model FamilyVoteResponse {
+  id        String     @id @default(cuid())
+  voteId    String
+  vote      FamilyVote @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  /// hashed per-browser id, so one browser has one (changeable) vote
+  voterKey  String
+  likes     Boolean
+  /// optional name the voter typed ("Mum")
+  name      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([voteId, voterKey])
 }
 
 /// Every YouCam / Gemini call, with units, for the daily caps and reporting.
