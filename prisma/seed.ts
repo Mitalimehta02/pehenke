@@ -15,10 +15,11 @@ const ASSETS = path.join(process.cwd(), "spike-assets");
 
 export const DEMO_SELLER = { slug: "meera-boutique", name: "Meera's Boutique" };
 
+// saree-magenta.jpg was dropped after the pre-render: on Sample model B it rendered as a
+// mid-calf open wrap, not a draped saree (2026-10-05).
 const GARMENTS: Array<{ file: string; label: string; category: Category; photoType: PhotoType; length: GarmentLength; priceInr: number; includesBlouse?: boolean; notes?: string }> = [
   { file: "ghagra-museum-mannequin.jpg", label: "Mustard and maroon ghagra set", category: "full_body", photoType: "mannequin", length: "floor", priceInr: 2499 },
   { file: "saree-museum-mannequin.jpg", label: "Ivory zari silk saree", category: "full_body", photoType: "mannequin", length: "floor", priceInr: 3299, includesBlouse: true },
-  { file: "saree-magenta.jpg", label: "Magenta paisley silk saree", category: "full_body", photoType: "flatlay", length: "floor", priceInr: 2899, notes: "Blouse piece included, unstitched" },
   { file: "lehenga-worn.jpg", label: "Sage and pink lehenga with dupatta", category: "full_body", photoType: "worn", length: "floor", priceInr: 8999, includesBlouse: true },
   { file: "lehenga-shop-mannequin.jpg", label: "Red velvet bridal lehenga", category: "full_body", photoType: "mannequin", length: "floor", priceInr: 6499, includesBlouse: true },
   { file: "kurti-green-worn.jpg", label: "Green printed kurti", category: "upper_body", photoType: "worn", length: "knee", priceInr: 899 },

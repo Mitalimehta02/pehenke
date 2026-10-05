@@ -20,6 +20,7 @@ export type RenderRefusal = "daily_cap" | "buyer_cap";
  */
 export class Ledger {
   private pending: Promise<unknown>[] = [];
+  private taskChains = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -30,21 +31,30 @@ export class Ledger {
   /** Logger for YouCamClient. Writes are queued; call flush() before reading totals. */
   youcamLogger(context: { tryOnId?: string } = {}) {
     return (e: CallLogEntry) => {
-      const taskId = /\/task\/[^/]+\/([^/?]+)/.exec(e.path)?.[1];
-      this.track(
-        this.prisma.apiCall.create({
+      const raw = /\/task\/[^/]+\/([^/?]+)/.exec(e.path)?.[1];
+      const taskId = raw ? decodeURIComponent(raw) : null;
+      // null = charged but size unknown: count the full render cost to stay safe
+      const units = e.units ?? RENDER_UNITS;
+      // Chain per task so "already charged?" sees the previous write for the same task.
+      const prev = taskId ? (this.taskChains.get(taskId) ?? Promise.resolve()) : Promise.resolve();
+      const write = prev.then(async () => {
+        // YouCam charges a task once. A later poll that sees "success" again (e.g. after a
+        // resume) must not be logged as a second charge (seen live: ledger 22 vs YouCam 20).
+        const already = units > 0 && taskId ? await this.prisma.apiCall.findFirst({ where: { provider: "youcam", taskId, units: { gt: 0 } } }) : null;
+        await this.prisma.apiCall.create({
           data: {
             provider: "youcam",
             endpoint: `${e.method} ${e.path.replace(/\/task\/([^/]+)\/[^/?]+/, "/task/$1/:id")}`,
             httpStatus: typeof e.httpStatus === "number" ? e.httpStatus : null,
-            // null = charged but size unknown: count the full render cost to stay safe
-            units: e.units ?? RENDER_UNITS,
-            taskId: taskId ? decodeURIComponent(taskId) : null,
+            units: already ? 0 : units,
+            taskId,
             tryOnId: context.tryOnId ?? null,
             day: istDay(new Date(e.at)),
           },
-        }),
-      );
+        });
+      });
+      if (taskId) this.taskChains.set(taskId, write.catch(() => undefined));
+      this.track(write);
     };
   }
 

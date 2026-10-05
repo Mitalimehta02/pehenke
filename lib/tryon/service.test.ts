@@ -102,6 +102,19 @@ describe("TryOnService", () => {
     expect(fake.starts).toHaveLength(1);
   });
 
+  it("logs a task's charge once even if a resumed poll sees success again", async () => {
+    const { blobs, ledger, svc, fake } = setup();
+    const { garment, buyer } = await seedBasics(prisma, blobs);
+    const photo = await addBuyerPhoto(prisma, blobs, buyer.id);
+    await svc.request({ garmentId: garment.id, buyerPhotoId: photo.id, buyerId: buyer.id });
+    await svc.idle();
+    const t = await prisma.tryOn.findFirstOrThrow();
+    // a second success poll for the same task (as after a resume)
+    const c = fake.client(ledger.youcamLogger({ tryOnId: t.id }));
+    await c.clothesV3.poll(t.taskId!);
+    expect(await ledger.youcamUnitsToday()).toBe(2);
+  });
+
   it("abandons stale queued renders that never started", async () => {
     const { blobs, svc } = setup();
     const { garment, buyer } = await seedBasics(prisma, blobs);
