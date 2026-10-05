@@ -32,4 +32,15 @@ export const sellerCopy = {
   photoTypes: { flatlay: "Laid flat", hanger: "On a hanger", mannequin: "On a mannequin", worn: "Worn by a model" } as const,
   categories: { upper_body: "Top only", full_body: "Full outfit" } as const,
   outcomes: { pending: "Not delivered yet", delivered: "Delivered", refused: "Refused at door", cancelled: "Cancelled" } as const,
+
+  // WhatsApp messages the seller sends (prefilled in wa.me links; the seller can edit before sending)
+  waShop: (shop: string, url: string) => `Hi! You can now see any outfit from ${shop} on yourself before you order 👗 Just send one photo here: ${url}`,
+  waGarment: (label: string, priceInr: number | null, url: string) =>
+    `See our ${label}${priceInr != null ? ` (₹${priceInr.toLocaleString("en-IN")})` : ""} on you before you order 👗 Send one photo here: ${url}`,
+  waCard: (shop: string, ref: string, label: string, url: string) =>
+    `Hi! Your order ${ref} (${label}) from ${shop} is confirmed ✅\nHere's what you ordered, on you: ${url}`,
+  waDispatched: (shop: string, ref: string, label: string, url: string) =>
+    `Good news! Your order ${ref} (${label}) from ${shop} has been dispatched 🚚\nHere's what you ordered, on you: ${url}`,
+  waSellerLink: (shop: string, url: string) =>
+    `Your PehenKe seller page for ${shop}. Keep this link private: anyone who has it can manage your shop.\n${url}`,
 };

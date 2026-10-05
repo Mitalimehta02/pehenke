@@ -14,6 +14,9 @@ export async function resetDemo(app: App, sellerId: string) {
   if (!seller.isDemo) throw new Error("reset is only available for the demo seller");
 
   const photos = await app.consent.deleteSellerPhotos(sellerId);
+  // card images of orders made with sample photos (photo deletion only covers buyers' own photos)
+  const cards = await prisma.order.findMany({ where: { sellerId, cardImageKey: { not: null } }, select: { cardImageKey: true } });
+  await app.blobs.delete(cards.map((o) => o.cardImageKey!));
   const orders = await prisma.order.deleteMany({ where: { sellerId } });
   const chats = await prisma.conversation.deleteMany({ where: { sellerId } });
 

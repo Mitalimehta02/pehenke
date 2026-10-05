@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { DEFAULT_APP_URL } from "./links";
 
 const schema = z.object({
   YOUCAM_API_KEY: z.string().min(1, "YOUCAM_API_KEY is not set (see .env.example)"),
@@ -22,6 +23,10 @@ const schema = z.object({
   /** render audit (optional): skipped cleanly when unset */
   GEMINI_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   GEMINI_MODEL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  /** public base URL for links shared on WhatsApp (seller link, chat, card, family vote) */
+  APP_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
+  /** /admin (create sellers): disabled when unset; at least 16 characters */
+  ADMIN_SECRET: z.preprocess((v) => (v === "" ? undefined : v), z.string().min(16, "ADMIN_SECRET must be at least 16 characters").optional()),
 });
 
 export type ServerEnv = z.infer<typeof schema>;
@@ -39,4 +44,9 @@ export function serverEnv(): ServerEnv {
   }
   cached = parsed.data;
   return cached;
+}
+
+/** Base URL for absolute links: APP_URL, else the live site in production, else the local dev server. */
+export function appUrl(): string {
+  return serverEnv().APP_URL ?? (process.env.NODE_ENV === "production" ? DEFAULT_APP_URL : "http://localhost:3000");
 }

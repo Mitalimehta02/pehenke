@@ -2,7 +2,7 @@ import "server-only";
 import { auditorFromEnv } from "../audit";
 import { createApp, type App } from "../app";
 import { dbAsync } from "../db";
-import { serverEnv } from "../env";
+import { appUrl, serverEnv } from "../env";
 import type { FakeYouCam } from "../testing/fakeYoucam";
 import { YouCamClient, type CallLogger } from "../youcam";
 
@@ -34,6 +34,7 @@ export function getApp(): Promise<App> {
     return createApp({
       prisma: await dbAsync(),
       youcam: await youcamFactory(),
+      baseUrl: appUrl(),
       caps: { youcamDailyUnits: env.YOUCAM_DAILY_UNIT_CAP, buyerDailyRenders: env.BUYER_DAILY_RENDERS, geminiDailyLimit: env.GEMINI_DAILY_LIMIT },
       auditor: (onRequest) => auditorFromEnv(onRequest),
     });
@@ -56,8 +57,11 @@ export function maybePurge(): Promise<void> {
     try {
       const app = await getApp();
       const p = await app.consent.purgeExpired();
+      const votes = await app.family.purgeExpired();
       lastPurgeAt = Date.now();
       if (p.photos) console.log(`[retention] deleted ${p.photos} photos and ${p.renders} renders of ${p.buyers} buyers (older than 30 days)`);
+      if (p.orders) console.log(`[retention] cleared WhatsApp numbers / card links on ${p.orders} orders (older than 30 days)`);
+      if (votes) console.log(`[retention] deleted ${votes} expired family vote links`);
     } catch (err) {
       console.error("[retention] purge failed", err);
     } finally {

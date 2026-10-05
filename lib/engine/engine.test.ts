@@ -76,18 +76,38 @@ describe("buyer flow", () => {
     expect(texts([preview])).toMatch(/Saree as ordered\. Styling, accessories and other garments shown are illustrative\./);
     expect(await state()).toBe("PREVIEW");
 
-    const ordered = await tap(BTN.order);
-    expect(texts(ordered)).toMatch(/sent your order to Asha Sarees/);
+    const askPhone = await tap(BTN.order);
+    expect(texts(askPhone)).toMatch(/WhatsApp number\?[\s\S]*only to send your order confirmation card[\s\S]*deleted together with your photos/);
+    expect(buttonIds(askPhone)).toEqual([BTN.skipPhone]);
+    expect(await state()).toBe("AWAIT_PHONE");
+    expect(texts(await say("call me maybe"))).toMatch(/doesn't look like a phone number/);
+    expect(await db.prisma.order.count()).toBe(0);
+
+    const ordered = await say("091234 56789");
+    expect(texts(ordered)).toMatch(/sent your order to Asha Sarees.*send it to your WhatsApp number ending 6789./);
     expect(ordered.find((m) => m.kind === "link")).toEqual({ kind: "link", label: "Demo: open seller view", href: "/seller/asha-sarees" });
     expect(await state()).toBe("AWAIT_SELLER");
 
     const order = await db.prisma.order.findFirstOrThrow();
-    expect(order).toMatchObject({ cardStatus: "pending_seller", outcome: "pending" });
+    expect(order).toMatchObject({ cardStatus: "pending_seller", outcome: "pending", buyerWhatsapp: "+919123456789", cardToken: null });
     await app.orders.decide(seed.seller.id, order.id, "approve");
-    const card = (await lastOut()).find((m) => m.kind === "card")!;
+    const decided = await lastOut();
+    const card = decided.find((m) => m.kind === "card")!;
     expect(card).toMatchObject({ kind: "card", title: "Order confirmed" });
     expect((card as { lines: string[] }).lines.join(" ")).toMatch(/saree · ₹1,899/);
     expect(await state()).toBe("ORDERED");
+    // approval makes the shareable card: a token link and one stored image
+    const approved = await db.prisma.order.findFirstOrThrow();
+    expect(approved.cardToken).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(decided).toContainEqual({ kind: "link", label: "Open your card (to save or share)", href: `/card/${approved.cardToken}` });
+    const cardImg = await app.blobs.get(approved.cardImageKey!);
+    expect(cardImg?.contentType).toBe("image/jpeg");
+    expect((await sharp(cardImg!.bytes).metadata()).width).toBe(1080);
+    // the number lives only on the order: chat history keeps a masked copy
+    const conv = await db.prisma.conversation.findFirstOrThrow();
+    const history = JSON.stringify(await app.engine.messagesSince(conv.id));
+    expect(history).not.toMatch(/91234\s?56789/);
+    expect(history).toMatch(/••••••6789/);
 
     await app.orders.setOutcome(seed.seller.id, order.id, "delivered");
     expect(await db.prisma.order.findFirstOrThrow()).toMatchObject({ outcome: "delivered" });
@@ -193,8 +213,11 @@ describe("buyer flow", () => {
     await tap(btn(BTN.garment, seed.garment.id));
     await app.tryOns.idle();
     await tap(BTN.order);
+    await tap(BTN.skipPhone);
     const order = await db.prisma.order.findFirstOrThrow();
+    expect(order.buyerWhatsapp).toBeNull();
     await app.orders.decide(seed.seller.id, order.id, "reject", "out of stock in your size");
+    expect(await db.prisma.order.findFirstOrThrow()).toMatchObject({ cardToken: null, cardImageKey: null });
     expect(texts(await lastOut())).toMatch(/couldn't confirm this order: out of stock in your size/);
     expect(await state()).toBe("PICK_GARMENT");
   });
@@ -234,11 +257,18 @@ describe("consent and deletion", () => {
     await tap(btn(BTN.garment, seed.garment.id));
     await app.tryOns.idle();
     await tap(BTN.order);
+    await say("+91 98765 43210");
+    await app.orders.decide(seed.seller.id, (await db.prisma.order.findFirstOrThrow()).id, "approve");
+    const cardKey = (await db.prisma.order.findFirstOrThrow()).cardImageKey!;
+    expect(await app.blobs.get(cardKey)).not.toBeNull();
     const tryOn = await db.prisma.tryOn.findFirstOrThrow();
     const photo = await db.prisma.buyerPhoto.findFirstOrThrow();
 
     const o = await say("delete my photos");
     expect(texts(o)).toMatch(/Deleted from our servers: 1 photo and 1 try-on image\. YouCam .* confirmed/);
+    expect(texts(o)).toMatch(/Also deleted: your WhatsApp number, 1 order card link\./);
+    expect(await db.prisma.order.findFirstOrThrow()).toMatchObject({ buyerWhatsapp: null, cardToken: null, cardImageKey: null });
+    expect(await app.blobs.get(cardKey)).toBeNull();
     expect(fake.deletes).toEqual([tryOn.taskId]);
     expect(await db.prisma.buyerPhoto.count()).toBe(0);
     expect(await db.prisma.tryOn.count()).toBe(0);
@@ -292,7 +322,7 @@ describe("consent and deletion", () => {
     const old = await db.prisma.buyerPhoto.findFirstOrThrow();
     await db.prisma.buyerPhoto.update({ where: { id: old.id }, data: { createdAt: new Date(Date.now() - 31 * 864e5) } });
     await addBuyerPhoto(db.prisma, app.blobs, old.buyerId, "#22aa55"); // recent
-    expect(await app.consent.purgeExpired()).toEqual({ buyers: 1, photos: 1, renders: 1 });
+    expect(await app.consent.purgeExpired()).toEqual({ buyers: 1, photos: 1, renders: 1, orders: 0 });
     expect(await db.prisma.buyerPhoto.count()).toBe(1);
   });
 });

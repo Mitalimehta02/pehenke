@@ -15,7 +15,7 @@ export async function sellerDashboard(prisma: PrismaClient, sellerId: string) {
     }),
     prisma.order.findMany({
       where: { sellerId, cardStatus: { not: "pending_seller" } },
-      include: { garment: true },
+      include: { garment: true, tryOn: { select: { outputKey: true } } },
       orderBy: { createdAt: "desc" },
       take: 30,
     }),
@@ -30,7 +30,8 @@ export async function funnel(prisma: PrismaClient, sellerId: string) {
     prisma.conversation.count({ where: { sellerId } }),
     prisma.conversation.count({ where: { sellerId, buyer: { consents: { some: {} } } } }),
     prisma.buyerPhoto.count({ where: { sellerId, isSample: false, accepted: true } }),
-    prisma.message.count({ where: { conversation: { sellerId }, direction: "out", kind: "image" } }),
+    // try-on previews only (outfit photos are also sent as image messages)
+    prisma.message.count({ where: { conversation: { sellerId }, direction: "out", kind: "image", body: { path: ["mediaKey"], string_starts_with: "tryon/" } } }),
     prisma.order.count({ where: { sellerId } }),
     prisma.order.count({ where: { sellerId, cardStatus: "approved" } }),
     prisma.order.count({ where: { sellerId, outcome: "delivered" } }),

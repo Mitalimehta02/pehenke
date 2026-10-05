@@ -13,8 +13,11 @@ export type Incoming = {
   | { kind: "text"; text: string }
   | { kind: "image"; bytes: Uint8Array }
   | { kind: "button"; id: string; label?: string }
-  /** the chat was opened: greet a new conversation, otherwise do nothing (not recorded) */
-  | { kind: "open" }
+  /**
+   * the chat was opened: greet a new conversation, otherwise do nothing (not recorded).
+   * garmentId: opened from a shared outfit link, so that outfit is preselected.
+   */
+  | { kind: "open"; garmentId?: string }
 );
 
 export interface Button {
@@ -57,6 +60,8 @@ export const BTN = {
   tryAnother: "try_another",
   newPhoto: "new_photo",
   deletePhotos: "delete_photos",
+  askFamily: "ask_family",
+  skipPhone: "skip_phone",
 } as const;
 
 export const param = (id: string) => id.slice(id.indexOf(":") + 1);

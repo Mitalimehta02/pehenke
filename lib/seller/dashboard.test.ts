@@ -48,6 +48,7 @@ async function fullOrder(slug: string, buyer: string, garmentId: string, sellerI
   await app.engine.handle({ ...base, kind: "button", id: btn(BTN.garment, garmentId) });
   await app.tryOns.idle();
   await app.engine.handle({ ...base, kind: "button", id: BTN.order });
+  await app.engine.handle({ ...base, kind: "button", id: BTN.skipPhone });
   const order = await db.prisma.order.findFirstOrThrow({ where: { sellerId } });
   await app.orders.decide(sellerId, order.id, "approve");
   await app.orders.setOutcome(sellerId, order.id, "delivered");

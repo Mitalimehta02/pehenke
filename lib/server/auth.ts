@@ -1,7 +1,10 @@
 import "server-only";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import type { Seller } from "../generated/prisma/client";
+import { hashKey } from "../sellers/keys";
+
+export { hashKey, newSellerKey } from "../sellers/keys";
 
 /**
  * Web identities.
@@ -14,8 +17,6 @@ export const BUYER_COOKIE = "pk_buyer";
 const sellerCookie = (slug: string) => `pk_seller_${slug}`;
 const YEAR = 365 * 24 * 3600;
 
-export const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");
-export const newSellerKey = () => randomBytes(18).toString("base64url");
 
 /** Read the buyer id, if any (Server Components may only read cookies). */
 export async function readBuyerId(): Promise<string | null> {
