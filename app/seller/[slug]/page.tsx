@@ -6,7 +6,10 @@ import { serverEnv } from "@/lib/env";
 import { sellerDashboard, storageStats } from "@/lib/seller/dashboard";
 import { getApp } from "@/lib/server/app";
 import { isSeller } from "@/lib/server/auth";
-import { AddGarment, AutoRefresh, GarmentActions, OrderDecision, OutcomeSelect, ResetDemo } from "./SellerClient";
+import { ShareBox } from "@/app/_components/ShareBox";
+import { links } from "@/lib/links";
+import { formatPhone } from "@/lib/orders/phone";
+import { AddGarment, AutoRefresh, CardActions, GarmentActions, GarmentShare, OrderDecision, OutcomeSelect, ResetDemo } from "./SellerClient";
 import styles from "./seller.module.css";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +44,7 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
   ];
   const maxStep = Math.max(1, ...steps.map((s) => s.value));
   const usedPct = Math.min(100, (storage.dbBytes / (limitMb * 1024 * 1024)) * 100);
+  const chatUrl = links.chat(app.baseUrl, slug);
 
   return (
     <div className={styles.page}>
@@ -55,6 +59,12 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
         </a>
       </header>
       {seller.isDemo && <p className={styles.demoNote}>Demo shop: anyone with this link can act as the seller. Real shops use a private link.</p>}
+
+      <section className={styles.section}>
+        <h2>Share your shop</h2>
+        <p className={styles.hint}>Buyers open this link, send one photo, and see your outfits on themselves. Post it in your WhatsApp status or groups.</p>
+        <ShareBox label="Your shop chat link" url={chatUrl} waText={sellerCopy.waShop(seller.name, chatUrl)} />
+      </section>
 
       <section className={styles.section}>
         <h2>
@@ -154,6 +164,9 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
                     {g.gateStatus === "needs_review" && g.sellerConfirmed ? "Ready (you checked it)" : sellerCopy.gateStatus[g.gateStatus]}
                   </span>
                   {!tryable && g.active && status !== "approved" && g.gateAdvice && <p className={styles.advice}>{g.gateAdvice}</p>}
+                  {tryable && (
+                    <GarmentShare url={links.chat(app.baseUrl, slug, g.id)} waText={sellerCopy.waGarment(g.label, g.priceInr, links.chat(app.baseUrl, slug, g.id))} />
+                  )}
                   <GarmentActions slug={slug} sellerKey={key} garmentId={g.id} active={g.active} needsChecklist={g.gateStatus === "needs_review" && !g.sellerConfirmed} />
                 </div>
               </li>
@@ -166,17 +179,58 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
         <section className={styles.section}>
           <h2>Recent orders</h2>
           <ul className={styles.recent}>
-            {d.recent.map((o) => (
-              <li key={o.id}>
-                <div>
-                  <p className={styles.garmentTitle}>{o.garment.label}</p>
-                  <p className={styles.meta}>
-                    {orderRef(o.id)} · {o.cardStatus === "approved" ? "Card sent" : "Rejected"} · {ago(o.createdAt)}
-                  </p>
-                </div>
-                {o.cardStatus === "approved" && <OutcomeSelect slug={slug} sellerKey={key} orderId={o.id} outcome={o.outcome} />}
-              </li>
-            ))}
+            {d.recent.map((o) => {
+              if (o.cardStatus !== "approved") {
+                return (
+                  <li key={o.id}>
+                    <div>
+                      <p className={styles.garmentTitle}>{o.garment.label}</p>
+                      <p className={styles.meta}>
+                        {orderRef(o.id)} · Rejected · {ago(o.createdAt)}
+                      </p>
+                    </div>
+                  </li>
+                );
+              }
+              const ref = orderRef(o.id);
+              const cardUrl = o.cardToken ? links.card(app.baseUrl, o.cardToken) : null;
+              return (
+                <li key={o.id} className={styles.approvedOrder}>
+                  <div className={styles.approvedTop}>
+                    {o.cardToken ? (
+                      <a href={links.card("", o.cardToken)} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img className={styles.cardThumb} src={links.cardImage("", o.cardToken)} alt={`Order card ${ref}`} />
+                      </a>
+                    ) : (
+                      <div className={`${styles.cardThumb} ${styles.noImg}`} style={{ height: 112 }}>
+                        Photo deleted
+                      </div>
+                    )}
+                    <div className={styles.approvedInfo}>
+                      <p className={styles.garmentTitle}>{o.garment.label}</p>
+                      <p className={styles.meta}>
+                        {ref} · {inr(o.garment.priceInr)} · {ago(o.createdAt)}
+                      </p>
+                      <p className={styles.meta}>{o.buyerWhatsapp ? `Buyer's WhatsApp: ${formatPhone(o.buyerWhatsapp)}` : "No WhatsApp number given"}</p>
+                      <OutcomeSelect slug={slug} sellerKey={key} orderId={o.id} outcome={o.outcome} />
+                    </div>
+                  </div>
+                  {cardUrl && (
+                    <CardActions
+                      slug={slug}
+                      sellerKey={key}
+                      orderId={o.id}
+                      waTo={o.buyerWhatsapp}
+                      cardText={sellerCopy.waCard(seller.name, ref, o.garment.label, cardUrl)}
+                      dispatchText={sellerCopy.waDispatched(seller.name, ref, o.garment.label, cardUrl)}
+                      sentAgo={o.cardSentAt ? ago(o.cardSentAt) : null}
+                      dispatchedAgo={o.dispatchedAt ? ago(o.dispatchedAt) : null}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

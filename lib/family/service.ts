@@ -1,6 +1,7 @@
 import type { PrismaClient } from "../generated/prisma/client";
 import { hashKey, newToken } from "../sellers/keys";
 import { DAY_MS } from "../time";
+import { MAX_NAME, MAX_RESPONSES, VOTE_DAYS } from "./limits";
 
 /**
  * "Ask family": the buyer chooses to share one try-on image through a public,
@@ -10,10 +11,7 @@ import { DAY_MS } from "../time";
  * VOTE_DAYS and are deleted with the buyer's photos.
  */
 
-export const VOTE_DAYS = 7;
-/** responses accepted per link (stops a script from flooding the buyer's chat) */
-export const MAX_RESPONSES = 100;
-export const MAX_NAME = 40;
+export { MAX_NAME, MAX_RESPONSES, VOTE_DAYS } from "./limits";
 
 export class VoteClosedError extends Error {}
 

@@ -4,7 +4,8 @@
  */
 import type { DeletionSummary } from "../consent/service";
 import { RETENTION_DAYS } from "../consent/service";
-import { VOTE_DAYS, type Tally } from "../family/service";
+import { VOTE_DAYS } from "../family/limits";
+import type { Tally } from "../family/service";
 import type { PhotoRejection } from "../photos/buyerPhoto";
 
 const inr = (n: number | null | undefined) => (n == null ? "" : ` · ₹${n.toLocaleString("en-IN")}`);

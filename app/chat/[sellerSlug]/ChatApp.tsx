@@ -12,11 +12,13 @@ interface ApiReply {
   error?: string;
 }
 
-/** Conversation states in which results arrive later, so the UI polls. */
-const POLL_STATES = new Set(["TRYON_RUNNING", "AWAIT_SELLER"]);
+/** Conversation states in which a result is expected soon: poll fast. Otherwise poll slowly (family votes, seller decisions). */
+const FAST_POLL_STATES = new Set(["TRYON_RUNNING", "AWAIT_SELLER"]);
+const FAST_POLL_MS = 2000;
+const SLOW_POLL_MS = 10000;
 const media = (key: string) => `/api/media/${key}`;
 
-export default function ChatApp({ sellerSlug, sellerName }: { sellerSlug: string; sellerName: string }) {
+export default function ChatApp({ sellerSlug, sellerName, garmentId }: { sellerSlug: string; sellerName: string; garmentId?: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [state, setState] = useState<State>("NEW");
   const [busy, setBusy] = useState(false);
@@ -65,21 +67,27 @@ export default function ChatApp({ sellerSlug, sellerName }: { sellerSlug: string
       if (cancelled) return;
       merge(data.messages);
       setState(data.state);
-      if (!data.messages.length) {
+      if (!data.messages.length || garmentId) {
         const f = new FormData();
         f.set("kind", "open");
+        if (garmentId) f.set("garmentId", garmentId);
         await post(f);
+        // the outfit link is used once; a reload shouldn't repeat it
+        if (garmentId) window.history.replaceState(null, "", window.location.pathname);
       }
     })().catch(() => setError("Couldn't load the chat. Please refresh."));
     return () => {
       cancelled = true;
     };
-  }, [sellerSlug, merge, post]);
+  }, [sellerSlug, garmentId, merge, post]);
 
-  // Poll while a result is on its way (render running, seller deciding).
+  // Poll for messages that arrive later: fast while a result is on its way
+  // (render running, seller deciding), slowly otherwise (family votes), and
+  // not at all while the tab is hidden.
   useEffect(() => {
-    if (!POLL_STATES.has(state)) return;
+    const ms = FAST_POLL_STATES.has(state) ? FAST_POLL_MS : SLOW_POLL_MS;
     const t = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
       try {
         const res = await fetch(`/api/chat/${sellerSlug}/events${lastId ? `?after=${lastId}` : ""}`);
         const data: ApiReply = await res.json();
@@ -88,7 +96,7 @@ export default function ChatApp({ sellerSlug, sellerName }: { sellerSlug: string
       } catch {
         /* next tick */
       }
-    }, 2000);
+    }, ms);
     return () => clearInterval(t);
   }, [state, sellerSlug, lastId, merge]);
 
@@ -238,10 +246,11 @@ function Message({
   const o = b as Outgoing;
   if (o.kind === "status") return null;
   if (o.kind === "link") {
+    const wa = o.href.startsWith("https://wa.me/");
     return (
       <div className={`${styles.row} ${styles.left}`}>
-        <a className={styles.demoLink} href={o.href} target="_blank" rel="noreferrer">
-          {o.label} ↗
+        <a className={wa ? styles.waLink : styles.demoLink} href={o.href} target="_blank" rel="noreferrer">
+          {o.label} {wa ? "" : "↗"}
         </a>
       </div>
     );

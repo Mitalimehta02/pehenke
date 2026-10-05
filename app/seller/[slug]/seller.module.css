@@ -415,6 +415,7 @@
 
 .recent li {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
@@ -523,4 +524,93 @@
 .reset {
   display: grid;
   gap: 6px;
+}
+
+/* ---------- sharing & WhatsApp ---------- */
+
+.shareRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.shareRow .link {
+  margin-top: 0;
+}
+
+.waSmall,
+.waButton,
+.waOutline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: 10px;
+}
+
+.waSmall {
+  font-size: 13px;
+  padding: 6px 12px;
+  background: var(--ok);
+  color: #fff;
+}
+
+.waButton,
+.waOutline {
+  width: 100%;
+  min-height: 46px;
+  font-size: 15px;
+}
+
+.waButton {
+  background: var(--ok);
+  color: #fff;
+}
+
+.waOutline {
+  margin-top: 8px;
+  border: 1.5px solid var(--ok);
+  color: var(--ok);
+  background: #fff;
+}
+
+.cardActions {
+  margin-top: 10px;
+}
+
+.cardActions .meta {
+  margin-top: 6px;
+}
+
+.dispatched {
+  margin: 10px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ok);
+}
+
+.approvedOrder {
+  display: block !important;
+}
+
+.approvedTop {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cardThumb {
+  flex: none;
+  width: 84px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  display: block;
+}
+
+.approvedInfo {
+  flex: 1;
+  min-width: 0;
 }

@@ -5,7 +5,9 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { sellerCopy } from "@/lib/engine/sellerCopy";
 import { resizeForUpload } from "@/lib/client/resizeImage";
 import type { OrderOutcome } from "@/lib/generated/prisma/enums";
-import { confirmChecklist, decideOrder, resetDemoData, setGarmentActive, setOutcome } from "./actions";
+import { WaIcon } from "@/app/_components/ShareBox";
+import { waLink } from "@/lib/links";
+import { confirmChecklist, decideOrder, markCardSent, markDispatched, resetDemoData, setGarmentActive, setOutcome } from "./actions";
 import styles from "./seller.module.css";
 
 type Props = { slug: string; sellerKey: string | null };
@@ -248,6 +250,73 @@ export function ResetDemo({ slug, sellerKey }: Props) {
         {pending ? "Resetting…" : "Reset demo data"}
       </button>
       {done && <p className={styles.meta}>{done}</p>}
+    </div>
+  );
+}
+
+/** Per-outfit link: opens the shop chat with this outfit preselected. */
+export function GarmentShare({ url, waText }: { url: string; waText: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={styles.shareRow}>
+      <a className={styles.waSmall} href={waLink(waText)} target="_blank" rel="noreferrer">
+        <WaIcon /> Share
+      </a>
+      <button
+        type="button"
+        className={styles.link}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(url);
+          } catch {
+            window.prompt("Copy this link:", url);
+          }
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1800);
+        }}
+      >
+        {copied ? "Copied ✓" : "Copy link"}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Approved order: send the card to the buyer on WhatsApp (wa.me with the card
+ * link; to their number if they gave one), then "Mark dispatched", which
+ * offers to send the card again with a dispatch note.
+ */
+export function CardActions({
+  slug,
+  sellerKey,
+  orderId,
+  waTo,
+  cardText,
+  dispatchText,
+  sentAgo,
+  dispatchedAgo,
+}: Props & { orderId: string; waTo: string | null; cardText: string; dispatchText: string; sentAgo: string | null; dispatchedAgo: string | null }) {
+  const [pending, start] = useTransition();
+  return (
+    <div className={styles.cardActions}>
+      <a className={styles.waButton} href={waLink(cardText, waTo)} target="_blank" rel="noreferrer" onClick={() => start(() => markCardSent(slug, sellerKey, orderId))}>
+        <WaIcon /> {sentAgo ? "Send card again" : "Send card to buyer on WhatsApp"}
+      </a>
+      <p className={styles.meta}>{sentAgo ? `Card sent ${sentAgo}` : "Card not sent yet"}{waTo ? "" : " · buyer gave no number: pick their chat in WhatsApp"}</p>
+      {dispatchedAgo ? (
+        <>
+          <p className={styles.dispatched}>
+            <span aria-hidden>✓</span> Dispatched {dispatchedAgo}
+          </p>
+          <a className={styles.waOutline} href={waLink(dispatchText, waTo)} target="_blank" rel="noreferrer" onClick={() => start(() => markCardSent(slug, sellerKey, orderId))}>
+            <WaIcon /> Send the card with a dispatch note
+          </a>
+        </>
+      ) : (
+        <button className={styles.secondary} style={{ width: "100%", marginTop: 8 }} disabled={pending} onClick={() => start(() => markDispatched(slug, sellerKey, orderId))}>
+          {pending ? "Saving…" : "Mark dispatched"}
+        </button>
+      )}
     </div>
   );
 }

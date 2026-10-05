@@ -14,6 +14,9 @@ takes about a minute to wake up).
 - `/chat/[sellerSlug]` — phone-style buyer chat (consent, photo, try-on, preview, order)
 - `/seller/[slug]` — seller view: add outfits (photo gate), approve order cards, outcomes, funnel
 - `/credits` — sources and licences of the demo images
+- `/admin` — create sellers (private seller link + buyer chat link); needs `ADMIN_SECRET`
+- `/card/[token]` — the shareable order card the seller sends on WhatsApp
+- `/v/[token]` — "Ask family": a 7-day yes/no vote on one try-on image
 - `lib/engine` — channel-agnostic conversation engine (`handle(message) -> messages`)
 - `lib/tryon` — YouCam try-on jobs: content-hash cache, caps, resume after restart
 - `SPIKE.md` — what the YouCam API spike found; `DEPLOY.md` — how to deploy

@@ -30,6 +30,9 @@ migrations additive (add columns/tables; remove things in a later release).
 
 Required: `YOUCAM_API_KEY`, `DATABASE_URL` (Neon pooled), `DIRECT_URL` (Neon direct, migrations)
 
+Recommended: `APP_URL` (`https://pehenke.onrender.com`; base of links sent on WhatsApp),
+`ADMIN_SECRET` (16+ random characters; enables `/admin` to create sellers; unset = no `/admin`)
+
 Optional: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_DAILY_LIMIT`, `YOUCAM_DAILY_UNIT_CAP`,
 `BUYER_DAILY_RENDERS`, `DB_STORAGE_LIMIT_MB`, `YOUCAM_SECRET_KEY`, `YOUCAM_BASE_URL`,
 `NODE_VERSION`, `NODE_OPTIONS` (recommended: `--max-old-space-size=384`)

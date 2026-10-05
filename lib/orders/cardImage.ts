@@ -20,9 +20,12 @@ const BOLD = path.join(FONT_DIR, "NotoSans-Bold.ttf");
 export const CARD_W = 1080;
 const PAD = 48;
 const TEXT_W = CARD_W - 2 * PAD;
-const PHOTO_H = 1000;
-const THUMB_W = 250;
-const THUMB_H = 320;
+/** try-on panel height follows the image's proportions, within these bounds */
+const PHOTO_MIN_H = 600;
+const PHOTO_MAX_H = 1240;
+const THUMB_W = 200;
+const THUMB_H = 260;
+const THUMB_GAP = 28;
 
 const C = { bg: "#fbf7f2", ink: "#1f2328", muted: "#5d6470", panel: "#efe7dc", accent: "#0f7a55", rule: "#e3d9cc" };
 
@@ -72,11 +75,13 @@ export interface CardImageInput {
 /** Render the card as a JPEG (1080 px wide; height depends on the text). */
 export async function renderCardImage({ card, tryOn, garment }: CardImageInput): Promise<{ bytes: Buffer; width: number; height: number }> {
   return withImageSlot(async () => {
+    // details sit left of the garment thumbnail (the thumbnail never covers the try-on)
+    const infoW = garment ? TEXT_W - THUMB_W - THUMB_GAP : TEXT_W;
     const title = await text(card.title, { size: 46, bold: true, width: TEXT_W - 70 });
     const shop = await text(card.sellerName, { size: 30, color: C.muted, width: TEXT_W - 70 });
-    const label = await text(card.garmentLabel, { size: 44, bold: true });
-    const meta = await text([card.priceInr != null ? `₹${card.priceInr.toLocaleString("en-IN")}` : null, `Order ${card.orderRef}`].filter(Boolean).join("  ·  "), { size: 36 });
-    const disclosure = card.disclosure ? await text(card.disclosure, { size: 28, color: C.muted }) : null;
+    const label = await text(card.garmentLabel, { size: 42, bold: true, width: infoW });
+    const meta = await text([card.priceInr != null ? `₹${card.priceInr.toLocaleString("en-IN")}` : null, `Order ${card.orderRef}`].filter(Boolean).join("  ·  "), { size: 34, width: infoW });
+    const disclosure = card.disclosure ? await text(card.disclosure, { size: 27, color: C.muted, width: infoW }) : null;
     const footer = await text(copy.cardImageFooter(), { size: 24, color: C.muted });
 
     const layers: OverlayOptions[] = [];
@@ -87,25 +92,20 @@ export async function renderCardImage({ card, tryOn, garment }: CardImageInput):
     y += Math.max(54, title.height + 12 + shop.height) + 32;
 
     const photoW = CARD_W - 2 * PAD;
+    let photoH = 300;
     if (tryOn) {
-      layers.push({ input: await rounded(tryOn, photoW, PHOTO_H, "contain", 28), left: PAD, top: y });
+      const m = await sharp(tryOn).metadata();
+      const [w, h] = (m.orientation ?? 1) >= 5 ? [m.height, m.width] : [m.width, m.height];
+      photoH = Math.min(PHOTO_MAX_H, Math.max(PHOTO_MIN_H, Math.round((photoW * (h ?? 4)) / (w ?? 3))));
+      layers.push({ input: await rounded(tryOn, photoW, photoH, "contain", 28), left: PAD, top: y });
     } else {
       const none = await text(copy.cardImageNoPhoto(), { size: 30, color: C.muted, width: photoW - 80 });
-      layers.push({ input: await sharp({ create: { width: photoW, height: 300, channels: 4, background: C.panel } }).composite([{ input: roundedMask(photoW, 300, 28), blend: "dest-in" }]).png().toBuffer(), left: PAD, top: y });
-      layers.push({ input: none.input, left: PAD + 40, top: y + 150 - Math.round(none.height / 2) });
-    }
-    const photoH = tryOn ? PHOTO_H : 300;
-    if (garment && tryOn) {
-      // garment thumbnail with a white frame, bottom-right of the try-on
-      const frame = 8;
-      const thumb = await rounded(garment, THUMB_W, THUMB_H, "contain", 16, "#ffffff");
-      const fx = CARD_W - PAD - 24 - THUMB_W - 2 * frame;
-      const fy = y + photoH - 24 - THUMB_H - 2 * frame;
-      layers.push({ input: await sharp({ create: { width: THUMB_W + 2 * frame, height: THUMB_H + 2 * frame, channels: 4, background: "#ffffff" } }).composite([{ input: roundedMask(THUMB_W + 2 * frame, THUMB_H + 2 * frame, 22), blend: "dest-in" }]).png().toBuffer(), left: fx, top: fy });
-      layers.push({ input: thumb, left: fx + frame, top: fy + frame });
+      layers.push({ input: await sharp({ create: { width: photoW, height: photoH, channels: 4, background: C.panel } }).composite([{ input: roundedMask(photoW, photoH, 28), blend: "dest-in" }]).png().toBuffer(), left: PAD, top: y });
+      layers.push({ input: none.input, left: PAD + 40, top: y + photoH / 2 - Math.round(none.height / 2) });
     }
     y += photoH + 36;
 
+    const infoTop = y;
     layers.push({ input: label.input, left: PAD, top: y });
     y += label.height + 18;
     layers.push({ input: meta.input, left: PAD, top: y });
@@ -113,6 +113,14 @@ export async function renderCardImage({ card, tryOn, garment }: CardImageInput):
     if (disclosure) {
       layers.push({ input: disclosure.input, left: PAD, top: y });
       y += disclosure.height + 24;
+    }
+    if (garment) {
+      // the garment as the seller photographed it, beside the details
+      const frame = 6;
+      const tx = CARD_W - PAD - THUMB_W - 2 * frame;
+      layers.push({ input: await sharp({ create: { width: THUMB_W + 2 * frame, height: THUMB_H + 2 * frame, channels: 4, background: C.rule } }).composite([{ input: roundedMask(THUMB_W + 2 * frame, THUMB_H + 2 * frame, 20), blend: "dest-in" }]).png().toBuffer(), left: tx, top: infoTop });
+      layers.push({ input: await rounded(garment, THUMB_W, THUMB_H, "contain", 16, "#ffffff"), left: tx + frame, top: infoTop + frame });
+      y = Math.max(y, infoTop + THUMB_H + 2 * frame + 28);
     }
     layers.push({ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${TEXT_W}" height="2"><rect width="${TEXT_W}" height="2" fill="${C.rule}"/></svg>`), left: PAD, top: y });
     y += 20;

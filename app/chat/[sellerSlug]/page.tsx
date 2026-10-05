@@ -14,8 +14,10 @@ export async function generateMetadata({ params }: PageProps<"/chat/[sellerSlug]
   return { title: seller ? `${seller.name} · Try it on` : "Shop not found" };
 }
 
-export default async function ChatPage({ params }: PageProps<"/chat/[sellerSlug]">) {
+export default async function ChatPage({ params, searchParams }: PageProps<"/chat/[sellerSlug]">) {
   const seller = await sellerFor((await params).sellerSlug);
   if (!seller) notFound();
-  return <ChatApp sellerSlug={seller.slug} sellerName={seller.name} />;
+  // ?g=<garmentId>: opened from a shared outfit link
+  const g = (await searchParams).g;
+  return <ChatApp sellerSlug={seller.slug} sellerName={seller.name} garmentId={typeof g === "string" ? g : undefined} />;
 }

@@ -156,7 +156,13 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
   30-day retention purge.
 - `lib/storage/blobs.ts`: image bytes only in the Blob table (Postgres for now, behind
   BlobStore). Nothing may depend on local disk (Render wipes it).
-- Order cards are never auto-sent: the seller approves each one.
+- Order cards are never auto-sent: the seller approves each one. Approval makes a
+  `/card/<token>` link and one card image (`lib/orders/cardImage.ts`, bundled Noto Sans);
+  the seller sends it via a wa.me link. The buyer's WhatsApp number (asked at order time,
+  optional) lives only on the Order and is masked in chat history.
+- Family vote (`lib/family/`): public `/v/<token>`, 7 days, tally posted to the chat.
+- "Delete my photos" and the 30-day purge also clear WhatsApp numbers, card links/images
+  and family links. Changing the consent text means bumping `CONSENT_VERSION`.
 - Tests run the real migrations on in-process PGlite (`lib/testing/db.ts`) with a fake
   YouCam (`lib/testing/fakeYoucam.ts`). No network, no units.
 
@@ -183,6 +189,7 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
 - `npm run db:seed` — idempotent demo data (demo seller, garments through the real photo gate, sample photos; credits from spike-assets/SOURCES.md). No units.
 - `npm run dev:local` — local dev without Neon or units: LOCAL_PGLITE=1 (file-backed in-process Postgres in .pglite/) and YOUCAM_FAKE=1 (fake renderer that reuses real spike renders when available). Both flags are ignored in production.
 - `npm run spike:skintone -- --person <file>` — dry run; add `--yes` to spend
+- `npm run seller:create -- --name "Shop" [--slug x]` — real seller; prints the private seller link (once) and the buyer chat link. `--new-link <slug>` replaces a lost link. Same code as `/admin` (needs `ADMIN_SECRET`). No units.
 - `npm run spike -- --repeat N ...` — repeatability: N extra renders per job,
   cached under their own keys (the only sanctioned cache bypass)
 - `npm run spike:recheck` — free: re-run pixel guards (bad render, garment

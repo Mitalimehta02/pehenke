@@ -22,7 +22,7 @@ describe("renderCardImage", () => {
     expect(meta.width).toBe(CARD_W);
     expect(meta.height).toBe(short.height);
     expect(long.height).toBeGreaterThan(short.height);
-    expect(long.height).toBeLessThan(2000);
+    expect(long.height).toBeLessThan(2300);
   });
 
   it("still renders without a try-on image (photo deleted)", async () => {

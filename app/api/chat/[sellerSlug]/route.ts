@@ -40,7 +40,8 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/chat/[selle
     if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "file too large" }, { status: 413 });
     incoming = { ...base, kind, bytes: new Uint8Array(await file.arrayBuffer()) };
   } else if (kind === "open") {
-    incoming = { ...base, kind };
+    const garmentId = String(form.get("garmentId") ?? "").slice(0, 64);
+    incoming = { ...base, kind, garmentId: /^[a-z0-9]+$/.test(garmentId) ? garmentId : undefined };
   } else {
     return NextResponse.json({ error: "unknown kind" }, { status: 400 });
   }

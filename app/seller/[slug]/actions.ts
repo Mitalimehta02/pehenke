@@ -47,3 +47,15 @@ export async function resetDemoData(slug: string, key: string | null) {
   refresh();
   return r;
 }
+
+export async function markCardSent(slug: string, key: string | null, orderId: string) {
+  const { app, seller } = await sellerFor(slug, key);
+  await app.orders.markCardSent(seller.id, orderId);
+  refresh();
+}
+
+export async function markDispatched(slug: string, key: string | null, orderId: string) {
+  const { app, seller } = await sellerFor(slug, key);
+  await app.orders.markDispatched(seller.id, orderId);
+  refresh();
+}
