@@ -1,69 +1,22 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from "next/link";
+import styles from "./info.module.css";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className={`${styles.page} ${styles.landing}`}>
+      <p className={styles.brand}>PehenKe</p>
+      <h1 className={styles.hero}>See it on you before you buy.</h1>
+      <ol className={styles.lines}>
+        <li>Small clothing sellers on WhatsApp share outfits, but buyers can&apos;t tell how they&apos;ll look.</li>
+        <li>PehenKe lets a buyer send one photo and see the seller&apos;s outfit on themselves, in the chat.</li>
+        <li>That try-on becomes the order confirmation card, so fewer cash-on-delivery orders get refused.</li>
+      </ol>
+      <Link href="/chat/meera-boutique" className={styles.cta}>
+        Try the demo
+      </Link>
+      <p className={styles.small}>
+        <Link href="/credits">Image credits</Link>
+      </p>
+    </main>
   );
 }

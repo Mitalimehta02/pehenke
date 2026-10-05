@@ -17,6 +17,8 @@ const schema = z.object({
   BUYER_DAILY_RENDERS: z.coerce.number().int().positive().default(6),
   /** Gemini requests per day we allow ourselves (free tier allows 20) */
   GEMINI_DAILY_LIMIT: z.coerce.number().int().nonnegative().default(18),
+  /** database storage limit shown on the seller page (Neon free plan: 1 GB per project; writes are blocked above it) */
+  DB_STORAGE_LIMIT_MB: z.coerce.number().positive().default(1024),
   /** render audit (optional): skipped cleanly when unset */
   GEMINI_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   GEMINI_MODEL: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),

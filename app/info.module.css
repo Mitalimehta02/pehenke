@@ -1,0 +1,136 @@
+/* Landing and credits pages. */
+
+.page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+  min-height: 100dvh;
+}
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: radial-gradient(900px 500px at 50% -10%, #f6e2f3 0%, var(--cream) 65%);
+  max-width: none;
+  padding-left: max(20px, calc((100vw - 520px) / 2));
+  padding-right: max(20px, calc((100vw - 520px) / 2));
+}
+
+.brand {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--plum-2);
+}
+
+.hero {
+  margin: 8px 0 18px;
+  font-size: clamp(30px, 8vw, 44px);
+  line-height: 1.08;
+  color: var(--plum);
+}
+
+.lines {
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  counter-reset: line;
+}
+
+.lines li {
+  position: relative;
+  padding-left: 34px;
+  font-size: 16.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  counter-increment: line;
+}
+
+.lines li::before {
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--plum);
+  background: var(--marigold);
+}
+
+.cta {
+  align-self: flex-start;
+  display: inline-block;
+  padding: 15px 28px;
+  border-radius: 14px;
+  background: var(--plum);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 10px 24px rgba(59, 13, 69, 0.28);
+}
+
+.small {
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.back {
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--plum-2);
+}
+
+.page h1 {
+  margin: 14px 0 8px;
+  color: var(--plum);
+}
+
+.lead {
+  color: var(--muted);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.credits {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+}
+
+.credits li {
+  display: flex;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.credits img {
+  flex: none;
+  width: 72px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--plum-soft);
+}
+
+.credits p {
+  margin: 2px 0;
+  font-size: 13.5px;
+  word-break: break-word;
+}
+
+.what {
+  font-weight: 700;
+  font-size: 15px !important;
+}
