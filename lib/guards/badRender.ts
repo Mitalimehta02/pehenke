@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { withImageSlot } from "../storage/imageLimit";
 import type { GarmentCategory } from "../youcam/types";
 import type { Framing } from "./types";
 
@@ -54,7 +55,11 @@ export interface BadRenderResult {
   aspectChanged: boolean;
 }
 
-export async function checkBadRender(
+export function checkBadRender(...args: Parameters<typeof checkBadRenderUnlimited>): Promise<BadRenderResult> {
+  return withImageSlot(() => checkBadRenderUnlimited(...args));
+}
+
+async function checkBadRenderUnlimited(
   input: Uint8Array,
   output: Uint8Array,
   framing: Framing,

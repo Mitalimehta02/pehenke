@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
+import { withImageSlot } from "../storage/imageLimit";
 import type { ZodType } from "zod";
 import {
   AUDIT_PROMPT,
@@ -158,6 +159,6 @@ export function statusOf(err: unknown): number | undefined {
 }
 
 async function shrink(img: AuditImage): Promise<string> {
-  const buf = await sharp(img.bytes).rotate().resize(MAX_SIDE, MAX_SIDE, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+  const buf = await withImageSlot(() => sharp(img.bytes).rotate().resize(MAX_SIDE, MAX_SIDE, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer());
   return buf.toString("base64");
 }

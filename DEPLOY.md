@@ -1,68 +1,78 @@
-# Deploying PehenKe (Render web service)
+# Deploying PehenKe on Render (free web service)
 
-Not deployed yet. This is what the host needs and what to watch for.
+Target: Render **Free** web service (512 MB RAM, sleeps after 15 min without inbound traffic,
+~1 min to wake, no persistent disk), region **Ohio** (same as Neon us-east-2).
+Facts below are from Render's docs (deploys, free, node-version, health-checks pages).
 
-## Host settings
+## Values to type into Render
 
-| Setting | Value |
+| Field | Value |
 |---|---|
-| Runtime | Node **24** (`.node-version` = 24; `engines.node` = `>=22.12 <25`; Next 16 needs ≥ 20.9) |
-| Build command | `npm ci && npm run build` (`postinstall` runs `prisma generate`; no database needed at build time) |
-| Pre-deploy command | `npm run db:migrate` (`prisma migrate deploy`, uses `DIRECT_URL`) |
-| Start command | `npm run start` (`next start`; listens on `$PORT`, which Render sets) |
-| Instances | **exactly 1** (in-process job queue, conversation locks and Gemini pacing assume one server) |
-| Health check path | `/` (static, no database) |
+| Build command | `npm ci && npm run build:render` |
+| Start command | `npm run start` |
+| Node version | from `.node-version` (= `24`); or set env `NODE_VERSION=24` |
+| Health check path | `/api/health` |
+| Instances | 1 (the free plan runs one) |
 
-One-time, from a developer machine with the spike images (they are gitignored, so the host
-cannot seed): `npm run db:migrate`, `npm run db:seed`, then `npm run prerender` (dry run) and
-`npm run prerender -- --yes` after approving the cost. All need port 5432 (hotspot/WARP).
+**Pre-deploy command: not available on Free** ("available for paid web services, private
+services, and background workers"). So migrations run inside the build (`build:render`):
+`scripts/migrate-if-configured.mjs` runs `prisma migrate deploy` when `DIRECT_URL` is present at
+build time and fails the build if the migration fails. Render's docs don't say whether dashboard
+env vars exist at build time; if they don't, the build log says `migrations SKIPPED` and you run
+`npm run db:migrate` from your machine (hotspot/WARP) before using the deploy. Check the first
+build log for which happened. Migrations are forward-only; a migration that succeeds while the
+rest of the build fails leaves the previous deploy running on the new schema, so keep
+migrations additive (add columns/tables; remove things in a later release).
 
-## Environment variables
+## Environment variable names (values go in the Render dashboard, never in git)
 
-| Variable | Required | Notes |
-|---|---|---|
-| `YOUCAM_API_KEY` | yes | server-only, never `NEXT_PUBLIC_` |
-| `YOUCAM_SECRET_KEY` | no | V1 token auth for the balance endpoint (not used by the app) |
-| `YOUCAM_BASE_URL` | no | default `https://yce-api-01.makeupar.com` |
-| `DATABASE_URL` | yes | Neon **pooled** string (`-pooler` host), `sslmode=verify-full` |
-| `DIRECT_URL` | yes (pre-deploy) | Neon **direct** string, for migrations |
-| `YOUCAM_DAILY_UNIT_CAP` | no | default 60 |
-| `BUYER_DAILY_RENDERS` | no | default 6 |
-| `GEMINI_API_KEY` | no | photo gate; without it every new garment needs the seller's checklist |
-| `GEMINI_MODEL` | no | default `gemini-3.8-flash` |
-| `GEMINI_DAILY_LIMIT` | no | default 18 (free tier allows 20/day) |
-| `DB_STORAGE_LIMIT_MB` | no | default 1024 (Neon free plan) |
-| `LOCAL_PGLITE`, `YOUCAM_FAKE`, `SPIKE_UNIT_CAP` | **must not be set** | local development / spike only (ignored in production anyway) |
+Required: `YOUCAM_API_KEY`, `DATABASE_URL` (Neon pooled), `DIRECT_URL` (Neon direct, migrations)
 
-## A host that sleeps when idle and wipes its disk
+Optional: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_DAILY_LIMIT`, `YOUCAM_DAILY_UNIT_CAP`,
+`BUYER_DAILY_RENDERS`, `DB_STORAGE_LIMIT_MB`, `YOUCAM_SECRET_KEY`, `YOUCAM_BASE_URL`,
+`NODE_VERSION`, `NODE_OPTIONS` (recommended: `--max-old-space-size=384`)
+
+**Do not set:** `NODE_ENV` (the build needs devDependencies such as `typescript` and the
+`prisma` CLI; `next start` sets production mode itself), `LOCAL_PGLITE`, `YOUCAM_FAKE`,
+`SPIKE_UNIT_CAP`.
+
+## One-time setup (from a developer machine; needs port 5432, i.e. hotspot/WARP)
+
+`npm run db:migrate`, `npm run db:seed`, `npm run prerender` (dry run), then
+`npm run prerender -- --yes --max-units <n>` after approving the cost. The demo images are
+gitignored, so the host can't seed; after seeding, everything lives in Neon.
+
+## Memory (512 MB)
+
+Measured on a 12 MP (4000x3000) phone photo:
+- Production server after loading every route: ~145 MB, peak ~185 MB.
+- Image work per photo: ~65 MB with sharp's defaults, **~28 MB** after limiting sharp to one
+  thread with no cache (`lib/storage/imageLimit.ts`).
+- Image operations run **one at a time** app-wide, so concurrent uploads and finished renders
+  don't stack. Expected peak ~215 MB: fits in 512 MB with headroom.
+- Browsers already shrink photos to 2048 px before upload; full 12 MP files only arrive from
+  direct API calls (capped at 15 MB).
+
+## Sleeping host, wiped disk: what to expect
 
 **Safe by design**
-- Nothing is stored on local disk: images live in Postgres (`Blob`), state in Postgres,
-  buyer identity in a browser cookie. A wiped disk loses nothing.
-- Paid renders survive a restart: the task id is written to the database before polling,
-  and `instrumentation.ts` resumes running renders on every start.
-- Caps, units and Gemini usage are counted in the database, so they survive restarts.
-- Seller approvals and finished renders are stored as chat messages; a buyer who comes back
-  later sees them.
+- Nothing on local disk: images in Postgres (`Blob`), state in Postgres, buyer id in a cookie.
+- Paid renders survive restarts: task id saved before polling; resume on every start
+  (`instrumentation.ts`, non-blocking). Verified live: a render interrupted by a database error
+  was resumed without a new task or a second charge.
+- Caps, units and Gemini usage are counted in the database.
+
+**Keep it awake** with an external uptime monitor calling `https://<your-app>/api/health`
+every 10 minutes. That also triggers the retention purge (at most hourly), which keeps the
+"deleted after 30 days" promise. Render grants 750 free instance hours per workspace per month;
+one always-on service uses ~744 h in a 31-day month, so this works for one free service only.
 
 **What can still go wrong**
-1. **Render finishes while the server sleeps.** The buyer's chat polls every 2 s while a render
-   runs, which keeps the server awake while the page is open. If the buyer closes it and the
-   server sleeps, polling stops; on the next wake-up the render is resumed and the result
-   appears in the chat. If nothing wakes the server for 24 h, YouCam's task retention runs out:
-   the task still charges and is recorded as `lost`.
-2. **Retention purge runs only while awake** (on start and hourly). After a long idle period
-   the 30-day deletion happens late, on the next wake-up. The consent text promises 30 days,
-   so for a pilot add a daily wake-up (an uptime ping or a cron job calling the site).
-3. **Cold starts.** The first request after sleeping waits for the server to boot (resume and
-   purge run in the background and don't block it, but the buyer still waits for start-up).
-   During a live demo, open the site a minute before.
-4. **Units logged just before a shutdown** can be lost: API-call log rows are written
-   asynchronously. A render charged in the last instant before shutdown may be missing from
-   the ledger, so the daily cap could under-count by a render or two.
-5. **More than one instance breaks things:** two servers could render the same hash, double
-   the Gemini pacing, and race on a conversation. Keep one instance.
-6. **Seeding can't happen on the host** (spike images aren't in git). Seed from a developer
-   machine once; the data then lives in Neon.
-7. **Neon itself suspends idle compute** on the free plan; the first query after that is
-   slower. Not an error, but it adds to cold-start time.
+1. Without the keep-awake ping: a render still running when the server sleeps resumes on the next
+   wake-up; if nothing wakes it for 24 h, YouCam's retention ends, the task still charges, and
+   it's recorded as `lost`. The 30-day purge also runs late.
+2. Cold start: ~1 min to wake (Render) plus Neon's compute waking. Open the site a minute before
+   a live demo.
+3. API-call log rows are written asynchronously; a charge logged in the instant before a
+   shutdown can be lost, so the daily cap could under-count by a render.
+4. One instance only: the job queue, conversation locks and Gemini pacing are in memory.

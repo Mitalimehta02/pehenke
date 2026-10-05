@@ -42,6 +42,30 @@ export function getApp(): Promise<App> {
 }
 
 const PURGE_EVERY_MS = 60 * 60_000;
+let lastPurgeAt = 0;
+let purging: Promise<void> | null = null;
+
+/**
+ * Run the 30-day retention purge if it hasn't run in the last hour. Called on
+ * boot, hourly while awake, and by /api/health (the keep-awake ping), so the
+ * 30-day promise holds even on a host that sleeps when idle.
+ */
+export function maybePurge(): Promise<void> {
+  if (purging || Date.now() - lastPurgeAt < PURGE_EVERY_MS) return purging ?? Promise.resolve();
+  purging = (async () => {
+    try {
+      const app = await getApp();
+      const p = await app.consent.purgeExpired();
+      lastPurgeAt = Date.now();
+      if (p.photos) console.log(`[retention] deleted ${p.photos} photos and ${p.renders} renders of ${p.buyers} buyers (older than 30 days)`);
+    } catch (err) {
+      console.error("[retention] purge failed", err);
+    } finally {
+      purging = null;
+    }
+  })();
+  return purging;
+}
 
 /**
  * Server start: resume renders interrupted by a restart or sleep (Render may
@@ -57,16 +81,8 @@ export function boot(): Promise<void> {
     } catch (err) {
       console.error("[boot] resume failed", err);
     }
-    const purge = async () => {
-      try {
-        const p = await app.consent.purgeExpired();
-        if (p.photos) console.log(`[retention] deleted ${p.photos} photos and ${p.renders} renders of ${p.buyers} buyers (older than 30 days)`);
-      } catch (err) {
-        console.error("[retention] purge failed", err);
-      }
-    };
-    await purge();
-    setInterval(purge, PURGE_EVERY_MS).unref?.();
+    await maybePurge();
+    setInterval(() => void maybePurge(), PURGE_EVERY_MS).unref?.();
   })();
   return g.pehenkeBoot;
 }

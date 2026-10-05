@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { withImageSlot } from "../storage/imageLimit";
 import type { Framing } from "./types";
 
 /**
@@ -143,7 +144,11 @@ function sample(pts: number[][], max: number) {
 
 const near = (p: number[], pal: number[][]) => pal.some((c) => dist(p, c) < PALETTE_MATCH);
 
-export async function checkGarmentLength(opts: {
+export function checkGarmentLength(...args: Parameters<typeof checkGarmentLengthUnlimited>): Promise<LengthResult | undefined> {
+  return withImageSlot(() => checkGarmentLengthUnlimited(...args));
+}
+
+async function checkGarmentLengthUnlimited(opts: {
   input: Uint8Array;
   output: Uint8Array;
   garment: Uint8Array;

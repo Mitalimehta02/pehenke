@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { withImageSlot } from "./imageLimit";
 import type { PrismaClient } from "../generated/prisma/client";
 
 /**
@@ -58,11 +59,13 @@ export interface StoredImage {
  * content hash under `prefix`, so storing the same image twice is a no-op.
  */
 export async function storeImage(blobs: BlobStore, prefix: string, input: Uint8Array, quality = 85): Promise<StoredImage> {
-  const { data, info } = await sharp(input)
-    .rotate()
-    .resize(STORE_MAX_SIDE, STORE_MAX_SIDE, { fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality, mozjpeg: true })
-    .toBuffer({ resolveWithObject: true });
+  const { data, info } = await withImageSlot(() =>
+    sharp(input)
+      .rotate()
+      .resize(STORE_MAX_SIDE, STORE_MAX_SIDE, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer({ resolveWithObject: true }),
+  );
   const bytes = new Uint8Array(data);
   const hash = sha256(bytes);
   const key = `${prefix}/${hash.slice(0, 32)}.jpg`;
