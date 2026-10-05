@@ -1,4 +1,4 @@
-import type { PrismaClient } from "../generated/prisma/client";
+import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import type { BlobStore } from "../storage/blobs";
 import { YouCamApiError, type CallLogger, type YouCamClient } from "../youcam";
 import { DAY_MS } from "../time";
@@ -54,11 +54,20 @@ export class ConsentService {
    * buyer's and are kept. Optionally only photos older than `before`.
    */
   async deletePhotos(buyerId: string, before?: Date): Promise<DeletionSummary> {
+    const { result, keys } = await this.deletePhotoSet({ buyerId, ...(before ? { createdAt: { lt: before } } : {}) });
+    await this.scrubMessages(buyerId, keys);
+    return result;
+  }
+
+  /** Every buyer photo uploaded in one seller's chats (demo reset). Sample photos are never included. */
+  async deleteSellerPhotos(sellerId: string): Promise<DeletionSummary> {
+    return (await this.deletePhotoSet({ sellerId })).result;
+  }
+
+  /** Delete a set of buyer photos and every render made from them, here and at YouCam. */
+  private async deletePhotoSet(where: Prisma.BuyerPhotoWhereInput): Promise<{ result: DeletionSummary; keys: Set<string> }> {
     const { prisma, blobs } = this.deps;
-    const photos = await prisma.buyerPhoto.findMany({
-      where: { buyerId, isSample: false, ...(before ? { createdAt: { lt: before } } : {}) },
-      include: { tryOns: true },
-    });
+    const photos = await prisma.buyerPhoto.findMany({ where: { ...where, isSample: false }, include: { tryOns: true } });
     const renders = photos.flatMap((p) => p.tryOns);
 
     const youcam = { deleted: 0, alreadyGone: 0, failed: 0 };
@@ -86,9 +95,7 @@ export class ConsentService {
       ...(await prisma.tryOn.findMany({ where: { outputKey: { in: keys } }, select: { outputKey: true } })).map((x) => x.outputKey!),
     ]);
     await blobs.delete(keys.filter((k) => !stillUsed.has(k)));
-    await this.scrubMessages(buyerId, new Set(keys));
-
-    return { photos: photos.length, renders: renders.length, youcam };
+    return { result: { photos: photos.length, renders: renders.length, youcam }, keys: new Set(keys) };
   }
 
   /** Retention: delete every buyer photo (and its renders) older than RETENTION_DAYS. */

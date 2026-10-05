@@ -3,6 +3,7 @@ import type { Conversation, ConvState, Prisma, PrismaClient, Seller } from "../g
 import { checkBuyerPhoto } from "../photos/buyerPhoto";
 import type { BlobStore } from "../storage/blobs";
 import { storeImage } from "../storage/blobs";
+import { buildOrderCard } from "../orders/cardData";
 import type { TryOnService } from "../tryon/service";
 import { copy } from "./copy";
 import { BTN, btn, param, type Button, type ChatMessage, type Incoming, type Outgoing } from "./types";
@@ -109,15 +110,9 @@ export class Engine {
       const conv = await prisma.conversation.findUniqueOrThrow({ where: { id: order.conversationId } });
       const turn = this.turn(conv, order.seller);
       if (order.cardStatus === "approved") {
-        const card = copy.card({
-          label: order.garment.label,
-          priceInr: order.garment.priceInr,
-          orderRef: orderRef(order.id),
-          disclosure: order.disclosureText,
-          seller: order.seller.name,
-        });
+        const card = buildOrderCard(order);
         turn.out.push({ kind: "text", text: copy.orderApproved() });
-        turn.out.push({ kind: "card", mediaKey: order.tryOn?.outputKey ?? null, ...card, buttons: [this.b(BTN.tryAnother, copy.buttons.tryAnother)] });
+        turn.out.push({ kind: "card", mediaKey: card.imageKey, title: card.title, lines: card.lines, buttons: [this.b(BTN.tryAnother, copy.buttons.tryAnother)] });
         if (turn.state === "AWAIT_SELLER") turn.state = "ORDERED";
       } else if (order.cardStatus === "rejected") {
         turn.out.push({ kind: "text", text: copy.orderRejected(order.sellerNote), buttons: [this.b(BTN.tryAnother, copy.buttons.tryAnother)] });
@@ -431,7 +426,7 @@ export class Engine {
   }
 }
 
-export const orderRef = (id: string) => `#${id.slice(-6).toUpperCase()}`;
+export { orderRef } from "../orders/cardData";
 
 function toChat(r: { id: string; direction: string; createdAt: Date; body: unknown }): ChatMessage {
   return { id: r.id, direction: r.direction as "in" | "out", createdAt: r.createdAt.toISOString(), body: r.body as ChatMessage["body"] };
