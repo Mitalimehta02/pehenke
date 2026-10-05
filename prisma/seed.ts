@@ -96,7 +96,7 @@ async function main() {
   await app.ledger.flush();
 }
 
-main()
+if (process.argv[1]?.endsWith("seed.ts")) main()
   .then(() => process.exit(0))
   .catch((err) => {
     console.error(err);

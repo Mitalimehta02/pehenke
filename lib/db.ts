@@ -20,10 +20,10 @@ async function localClient(): Promise<PrismaClient> {
   const path = await import("node:path");
   const { PGlite } = await import("@electric-sql/pglite");
   const { PrismaPGlite } = await import("pglite-prisma-adapter");
-  const pg = new PGlite(path.join(process.cwd(), ".pglite"));
+  const pg = new PGlite(path.join(/*turbopackIgnore: true*/ process.cwd(), ".pglite"));
   const applied = await pg.query<{ exists: boolean }>(`SELECT to_regclass('public."Seller"') IS NOT NULL AS exists`);
   if (!applied.rows[0]?.exists) {
-    const dir = path.join(process.cwd(), "prisma", "migrations");
+    const dir = path.join(/*turbopackIgnore: true*/ process.cwd(), "prisma", "migrations");
     for (const m of readdirSync(dir).filter((d) => /^\d+_/.test(d)).sort()) await pg.exec(readFileSync(path.join(dir, m, "migration.sql"), "utf8"));
   }
   return new PrismaClient({ adapter: new PrismaPGlite(pg) });

@@ -3,8 +3,7 @@ import { auditorFromEnv } from "../audit";
 import { createApp, type App } from "../app";
 import { dbAsync } from "../db";
 import { serverEnv } from "../env";
-import { spikeRenderLookup } from "../testing/devRenders";
-import { FakeYouCam } from "../testing/fakeYoucam";
+import type { FakeYouCam } from "../testing/fakeYoucam";
 import { YouCamClient, type CallLogger } from "../youcam";
 
 /** One app instance per server process (reused across Next dev hot reloads). */
@@ -14,6 +13,9 @@ const g = globalThis as unknown as { pehenkeApp?: Promise<App>; pehenkeBoot?: Pr
 async function youcamFactory(): Promise<(logger: CallLogger) => YouCamClient> {
   const env = serverEnv();
   if (process.env.YOUCAM_FAKE === "1" && process.env.NODE_ENV !== "production") {
+    // dev-only modules, loaded lazily so they never reach the production server bundle
+    const { FakeYouCam } = await import("../testing/fakeYoucam");
+    const { spikeRenderLookup } = await import("../testing/devRenders");
     g.pehenkeFake ??= new FakeYouCam({ runningPolls: 3, renderFrom: await spikeRenderLookup() });
     console.warn("[dev] YOUCAM_FAKE=1: try-ons use the fake renderer, no units spent");
     return (logger) => {

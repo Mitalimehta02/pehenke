@@ -12,12 +12,12 @@ import { STORE_MAX_SIDE, sha256 } from "../storage/blobs";
  */
 export async function spikeRenderLookup(): Promise<(src: Uint8Array, ref: Uint8Array) => Promise<Buffer | null>> {
   const root = process.cwd();
-  const cachePath = path.join(root, "spike-output", "cache.json");
+  const cachePath = path.join(/*turbopackIgnore: true*/ root, "spike-output", "cache.json");
   if (!existsSync(cachePath)) return async () => null;
 
   const byHash = new Map<string, string>();
   for (const dir of ["garments", "people"]) {
-    const d = path.join(root, "spike-assets", dir);
+    const d = path.join(/*turbopackIgnore: true*/ root, "spike-assets", dir);
     if (!existsSync(d)) continue;
     for (const f of readdirSync(d).filter((x) => /\.(jpe?g|png)$/i.test(x))) {
       const norm = await sharp(readFileSync(path.join(d, f)))
@@ -37,6 +37,6 @@ export async function spikeRenderLookup(): Promise<(src: Uint8Array, ref: Uint8A
     const person = byHash.get(sha256(src));
     const garment = byHash.get(sha256(ref));
     const hit = recs.find((r) => r.job.personFile === person && r.job.garmentFile === garment);
-    return hit && existsSync(path.join(root, hit.outputPath!)) ? readFileSync(path.join(root, hit.outputPath!)) : null;
+    return hit && existsSync(path.join(/*turbopackIgnore: true*/ root, hit.outputPath!)) ? readFileSync(path.join(/*turbopackIgnore: true*/ root, hit.outputPath!)) : null;
   };
 }

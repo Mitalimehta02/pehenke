@@ -1,7 +1,9 @@
 /**
  * Runs once when a Next.js server starts, before it serves requests (Next 16
- * docs: instrumentation.register). Resumes pending try-ons and starts the
- * retention purge. Node runtime only: the app uses Prisma, sharp and timers.
+ * docs: instrumentation.register). Starts resuming pending try-ons and the
+ * retention purge in the background: register() must finish before the first
+ * request, and on a host that sleeps when idle every wake-up is a cold start,
+ * so it must not wait for that work. Node runtime only (Prisma, sharp, timers).
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -10,5 +12,5 @@ export async function register() {
     return;
   }
   const { boot } = await import("./lib/server/app");
-  await boot();
+  void boot().catch((err) => console.error("[boot] failed", err));
 }

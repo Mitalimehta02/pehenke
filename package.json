@@ -18,7 +18,8 @@
     "postinstall": "prisma generate",
     "db:seed": "tsx --conditions=react-server prisma/seed.ts",
     "db:migrate": "prisma migrate deploy",
-    "dev:local": "cross-env LOCAL_PGLITE=1 YOUCAM_FAKE=1 next dev"
+    "dev:local": "cross-env LOCAL_PGLITE=1 YOUCAM_FAKE=1 next dev",
+    "prerender": "tsx --conditions=react-server scripts/prerender.ts"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",
@@ -46,5 +47,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22.12 <25"
   }
 }
