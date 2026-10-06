@@ -76,8 +76,9 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
           // with "complete the look": the card shows the look, so the seller checks the look and its close-up
           const card = buildOrderCard(o);
           const lookItems = (Array.isArray(o.lookItems) ? o.lookItems : []) as unknown as LookItem[];
-          const fromPhotos = lookItems.filter((i) => i.fromSellerPhoto);
-          const stylingOnly = lookItems.filter((i) => !i.fromSellerPhoto);
+          const fromPhotos = lookItems.filter((i) => i.fromSellerPhoto && i.shown !== false);
+          const notShown = lookItems.filter((i) => i.ordered && i.shown === false);
+          const stylingOnly = lookItems.filter((i) => !i.ordered && !i.fromSellerPhoto);
           const neck = sellerCopy.neckAnswer(o.lookNeckBare);
           return (
             <article key={o.id} className={styles.order}>
@@ -137,6 +138,21 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
                         </ul>
                       </>
                     )}
+                  </div>
+                </div>
+              )}
+              {notShown.length > 0 && (
+                <div className={styles.lookBox}>
+                  <div className={styles.lookLists}>
+                    <p className={styles.lookHead}>{sellerCopy.lookNotShown}</p>
+                    <ul>
+                      {notShown.map((i) => (
+                        <li key={i.kind}>
+                          {lookItemLabel(i)}
+                          {i.priceInr != null ? ` · ${inr(i.priceInr)}` : ""}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               )}

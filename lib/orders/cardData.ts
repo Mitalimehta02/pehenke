@@ -19,6 +19,8 @@ export interface LookItem {
   ordered: boolean;
   /** drawn from the seller's own product photo (jewellery) vs a styling suggestion (lip shade) */
   fromSellerPhoto: boolean;
+  /** false: ordered, but it could not be placed on the buyer's photo, so the picture doesn't show it */
+  shown?: boolean;
   hex?: string;
 }
 
@@ -46,6 +48,8 @@ export interface OrderCardData {
 export const orderRef = (id: string) => `#${id.slice(-6).toUpperCase()}`;
 
 const KIND = { earring: "Earrings", necklace: "Necklace", lip: "Lip colour" } as const;
+/** Marks an ordered item that the card's picture does not show. */
+export const NOT_SHOWN = "(not shown)";
 export const lookItemLabel = (i: Pick<LookItem, "kind" | "label">) => `${KIND[i.kind]}: ${i.label}`;
 
 export function buildOrderCard(o: {
@@ -59,12 +63,12 @@ export function buildOrderCard(o: {
 }): OrderCardData {
   const ref = orderRef(o.id);
   const items = (Array.isArray(o.lookItems) ? o.lookItems : []) as LookItem[];
-  const extras = items.filter((i) => i.ordered).map((i) => ({ label: lookItemLabel(i), priceInr: i.priceInr }));
+  const extras = items.filter((i) => i.ordered).map((i) => ({ label: `${lookItemLabel(i)}${i.shown === false ? ` ${NOT_SHOWN}` : ""}`, priceInr: i.priceInr }));
   const styling = items.filter((i) => !i.ordered).map((i) => (i.kind === "lip" ? `lip colour (${i.label})` : lookItemLabel(i).toLowerCase()));
   const priced = [o.garment.priceInr, ...extras.map((e) => e.priceInr)];
   const totalInr = extras.length && priced.every((p) => p != null) ? priced.reduce<number>((n, p) => n + (p as number), 0) : null;
   // the look image only while it exists; the plain try-on otherwise (styling only applies to the look image)
-  const lookShown = items.length > 0 && !!o.look?.outputKey;
+  const lookShown = items.some((i) => i.shown !== false) && !!o.look?.outputKey;
   const { title, lines } = copy.card({ label: o.garment.label, priceInr: o.garment.priceInr, orderRef: ref, disclosure: o.disclosureText, seller: o.seller.name, extras, totalInr, styling: lookShown ? styling : [] });
   return {
     title,

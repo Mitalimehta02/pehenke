@@ -465,6 +465,10 @@ model Look {
   stepHashes    Json        @default("[]")
   /// units charged for steps this look started (cached steps cost nothing)
   units         Int         @default(0)
+  /// units paid for a step whose result was rejected (e.g. earrings on one ear only)
+  unitsWasted   Int         @default(0)
+  /// items that could not be placed and were left out: [{ kind, accessoryId?, reason, detail? }]
+  skipped       Json?
   /// full-body image with only the changed pixels pasted back
   outputKey     String?
   /// head-and-shoulders close-up
@@ -493,6 +497,10 @@ model LookStep {
   /// YouCam task id, written before polling starts
   taskId     String?
   units      Int         @default(0)
+  /// units paid for a result we rejected ourselves (never shown)
+  unitsWasted Int        @default(0)
+  /// why this step is never run again: "refused:<api error>" (free) or "one_sided" (paid). Remembered by hash.
+  rejection  String?
   outputKey  String?
   outputHash String?
   error      String?
@@ -514,6 +522,8 @@ model OrderItem {
   type        AccessoryType
   label       String
   priceInr    Int?
+  /// false: ordered without a picture (it could not be placed on the buyer's photo); the card says "not shown"
+  shown       Boolean       @default(true)
   createdAt   DateTime      @default(now())
 
   @@index([orderId])

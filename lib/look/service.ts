@@ -8,7 +8,7 @@ import { JobQueue } from "../tryon/queue";
 import type { Ledger, RenderRefusal } from "../units/ledger";
 import { LOOK_STEP_UNITS } from "../units/ledger";
 import { TaskLostError, TaskPollTimeoutError, YouCamApiError, type CallLogger, type LookFeature, type YouCamClient } from "../youcam";
-import { cropSize, cutCrop, headChanges, headCrop, pasteChanged, type CropBox } from "./crop";
+import { cropSize, cutCrop, earringSides, headChanges, headCrop, pasteChanged, type CropBox } from "./crop";
 import { findFaces, pickFace, type Face, type FaceFinder } from "./faceFinder";
 
 /**
@@ -52,6 +52,37 @@ export interface LookChoice {
   necklaceId?: string | null;
   earringId?: string | null;
   lip?: { hex: string; name: string } | null;
+}
+
+/** Why an item was left out of a look. The look continues without it. */
+export type SkipReason =
+  /** the API could not find the earlobes (usually hair over the ears): free */
+  | "ears_hidden"
+  /** the API could not place a necklace on this neck: free */
+  | "neck_unclear"
+  /** earrings came back on one ear only: paid, rejected by us, never shown */
+  | "one_sided"
+  /** refused by the API for another reason: free */
+  | "refused";
+
+export interface SkippedItem {
+  kind: "earring" | "necklace" | "lip";
+  accessoryId?: string;
+  reason: SkipReason;
+  /** the API's own words, for the seller and for support */
+  detail?: string;
+}
+
+type StepResult = { bytes: Uint8Array; charged: number } | { skip: SkipReason; detail?: string; charged: number; wasted: number } | { error: string } | "still_running";
+
+const KIND = { "2d-vto/necklace": "necklace", "2d-vto/earring": "earring", "makeup-vto": "lip" } as const;
+
+/** Plain reason for a remembered rejection. */
+function skipReason(feature: LookFeature, rejection: string): SkipReason {
+  if (rejection === "one_sided") return "one_sided";
+  if (feature === "2d-vto/earring" && /ear/i.test(rejection)) return "ears_hidden";
+  if (feature === "2d-vto/necklace" && /neck/i.test(rejection)) return "neck_unclear";
+  return "refused";
 }
 
 export type LookRefusal = RenderRefusal | "no_face" | "ears_covered" | "nothing_chosen" | "not_available";
@@ -153,7 +184,8 @@ export class LookService {
     if (existing?.status === "succeeded") return { kind: "cached", look: existing };
     if (existing && (existing.status === "queued" || existing.status === "running")) return { kind: "joined", look: existing };
 
-    const done = await prisma.lookStep.findMany({ where: { hash: { in: steps.map((s) => s.hash) }, status: "succeeded" }, select: { hash: true } });
+    // settled = already rendered, or remembered as rejected: neither is rendered again
+    const done = await prisma.lookStep.findMany({ where: { hash: { in: steps.map((s) => s.hash) }, OR: [{ status: "succeeded" }, { rejection: { not: null } }] }, select: { hash: true } });
     const newSteps = steps.length - done.length;
     if (newSteps > 0) {
       const allowed = await this.deps.ledger.canStartLook(p.buyerId, newSteps);
@@ -195,7 +227,7 @@ export class LookService {
     const acc = async (id?: string | null) => (id ? await prisma.accessory.findUnique({ where: { id } }) : null);
     const steps = this.plan(tryOn, prep.crop, await acc(p.necklaceId), await acc(p.earringId), p.lip?.hex.toLowerCase() ?? null);
     if (!steps.length) return 0;
-    const done = await prisma.lookStep.count({ where: { hash: { in: steps.map((s) => s.hash) }, status: "succeeded" } });
+    const done = await prisma.lookStep.count({ where: { hash: { in: steps.map((s) => s.hash) }, OR: [{ status: "succeeded" }, { rejection: { not: null } }] } });
     return (steps.length - done) * LOOK_STEP_UNITS;
   }
 
@@ -254,10 +286,17 @@ export class LookService {
     const before = await cutCrop(base.bytes, prep.crop);
     let cur: Uint8Array = before;
     const steps = this.plan(look.tryOn, prep.crop, look.necklace, look.earring, look.lipHex);
+    // where the face is inside the crop (fractions of its width / height), for the earring check
+    const meta = await sharp(base.bytes).metadata();
+    const face = prep.face
+      ? { cx: (prep.face.cx * meta.width! - prep.crop.left) / prep.crop.width, cy: (prep.face.cy * meta.height! - prep.crop.top) / prep.crop.height, size: (prep.face.size * meta.width!) / prep.crop.width }
+      : { cx: 0.5, cy: 0.28, size: 0.29 };
+    const skipped: SkippedItem[] = [];
+    let placed = 0;
     for (const step of steps) {
-      let r: { bytes: Uint8Array; charged: number } | { error: string } | "still_running";
+      let r: StepResult;
       try {
-        r = await this.withStepLock(step.hash, () => this.runStep(look.tryOnId, step, cur));
+        r = await this.withStepLock(step.hash, () => this.runStep(look.tryOnId, step, cur, face));
       } catch (err) {
         r = { error: (err as Error).message };
       }
@@ -268,8 +307,21 @@ export class LookService {
       }
       if ("error" in r) return this.fail(lookId, `${step.feature}: ${r.error}`);
       // recorded as each step is paid, so an interrupted run never under-counts (seen live)
-      if (r.charged) await prisma.look.update({ where: { id: lookId }, data: { units: { increment: r.charged } } });
+      if (r.charged) await prisma.look.update({ where: { id: lookId }, data: { units: { increment: r.charged }, unitsWasted: { increment: "skip" in r ? r.wasted : 0 } } });
+      if ("skip" in r) {
+        // an item that can't be placed is left out; the rest of the look goes on from the image before it
+        skipped.push({ kind: KIND[step.feature], accessoryId: step.accessory?.id, reason: r.skip, detail: r.detail });
+        continue;
+      }
       cur = r.bytes;
+      placed++;
+    }
+    const skippedJson = skipped.length ? (skipped as unknown as Prisma.InputJsonValue) : undefined;
+    if (!placed) {
+      // nothing could be placed: there is no look to show, but the reasons are kept for the buyer
+      await prisma.look.update({ where: { id: lookId }, data: { status: "failed", error: "nothing could be placed", skipped: skippedJson, finishedAt: this.now() } });
+      await this.deps.onFinished?.(lookId);
+      return;
     }
 
     let pasted;
@@ -283,15 +335,25 @@ export class LookService {
     const closeup = await storeImage(blobs, "look", cur, 90);
     await prisma.look.update({
       where: { id: lookId },
-      data: { status: "succeeded", finishedAt: this.now(), outputKey: full.key, closeupKey: closeup.key },
+      data: { status: "succeeded", finishedAt: this.now(), outputKey: full.key, closeupKey: closeup.key, skipped: skippedJson },
     });
     await this.deps.onFinished?.(lookId);
   }
 
-  /** One paid step: cached result, or resume its saved task, or start it (never twice). */
-  private async runStep(tryOnId: string, step: Step, input: Uint8Array): Promise<{ bytes: Uint8Array; charged: number } | { error: string } | "still_running"> {
+  /**
+   * One paid step: cached result, or a remembered rejection (never rendered again), or
+   * resume its saved task, or start it (never twice).
+   */
+  private async runStep(tryOnId: string, step: Step, input: Uint8Array, face: { cx: number; cy: number; size: number }): Promise<StepResult> {
     const { prisma, blobs } = this.deps;
     const row = await prisma.lookStep.findUnique({ where: { hash: step.hash } });
+    if (row?.rejection) return { skip: skipReason(step.feature, row.rejection), detail: row.rejection, charged: 0, wasted: 0 };
+    /** The API refused this item (free): remember it by hash, leave the item out. */
+    const refuse = async (apiError: string): Promise<StepResult> => {
+      const rejection = `refused:${apiError}`.slice(0, 300);
+      await prisma.lookStep.update({ where: { hash: step.hash }, data: { status: "failed", error: apiError, rejection, finishedAt: this.now() } });
+      return { skip: skipReason(step.feature, rejection), detail: apiError, charged: 0, wasted: 0 };
+    };
     if (row?.status === "succeeded" && row.outputKey) {
       const cached = await blobs.get(row.outputKey);
       if (cached) return { bytes: cached.bytes, charged: 0 };
@@ -317,18 +379,16 @@ export class LookService {
         // before polling: an abandoned task may still charge
         await prisma.lookStep.update({ where: { hash: step.hash }, data: { taskId, status: "running" } });
       } catch (err) {
-        const msg = err instanceof YouCamApiError ? `start rejected: ${err.errorCode ?? err.httpStatus}` : `start failed: ${(err as Error).message}`;
+        // a 4xx is the API refusing this request: the same request would be refused again
+        if (err instanceof YouCamApiError && err.httpStatus < 500) return refuse(`start rejected: ${err.errorCode ?? err.httpStatus}`);
+        const msg = `start failed: ${(err as Error).message}`;
         await prisma.lookStep.update({ where: { hash: step.hash }, data: { status: "failed", error: msg, finishedAt: this.now() } });
         return { error: msg };
       }
     }
     try {
       const st = await yc.pollTask<unknown>(step.feature, taskId, { timeoutMs: this.deps.pollTimeoutMs ?? 5 * 60_000 });
-      if (st.task_status !== "success") {
-        const msg = `${st.error ?? "task error"}${st.error_message ? `: ${st.error_message}` : ""}`;
-        await prisma.lookStep.update({ where: { hash: step.hash }, data: { status: "failed", error: msg, finishedAt: this.now() } });
-        return { error: msg };
-      }
+      if (st.task_status !== "success") return refuse(`${st.error ?? "task error"}${st.error_message ? `: ${st.error_message}` : ""}`);
       const url = findUrl(st.results);
       if (!url) throw new Error("success without a result URL");
       const dl = await yc.download(url); // result URLs expire in ~2h: store now
@@ -339,6 +399,19 @@ export class LookService {
       }
       // keep it lossless and the size of the input, so later steps and the paste-back compare exact pixels
       const png = await sharp(dl.bytes).removeAlpha().resize(want.width, want.height, { fit: "fill" }).png().toBuffer();
+      if (step.feature === EARRING) {
+        // Seen live: an earring on one ear only. That result is paid for but never shown; the
+        // rejection is remembered by hash so the same combination is not rendered again.
+        const sides = await earringSides(input, png, face);
+        if (sides.oneSided) {
+          await prisma.lookStep.update({
+            where: { hash: step.hash },
+            data: { status: "failed", units: LOOK_STEP_UNITS, unitsWasted: LOOK_STEP_UNITS, rejection: "one_sided", error: `earring on one ear only (${sides.left} / ${sides.right} changed pixels)`, finishedAt: this.now() },
+          });
+          console.warn(`[look] earring result rejected: one ear only (${LOOK_STEP_UNITS} unit wasted)`);
+          return { skip: "one_sided", charged: LOOK_STEP_UNITS, wasted: LOOK_STEP_UNITS };
+        }
+      }
       const key = `lookstep/${step.hash.slice(0, 32)}.png`;
       await blobs.put(key, png, { contentType: "image/png", width: want.width!, height: want.height! });
       await prisma.lookStep.update({

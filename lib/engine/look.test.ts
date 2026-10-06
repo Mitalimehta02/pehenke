@@ -93,6 +93,7 @@ describe("choosing a look is free; rendering happens only on 'Show me'", () => {
     expect(texts(first)).toMatch(/Choosing is free: nothing is made until you tap "Show me"/);
     expect(choiceIds(first)).toEqual([btn(BTN.lookEarring, acc.jhumka.id), btn(BTN.lookEarring, acc.stud.id)]);
     expect(texts(first)).not.toMatch(/covers your ears/);
+    expect(texts(first)).toMatch(/I'll try to add them; it works when your ears are visible in the photo/);
     expect(buttonIds(first)).toEqual([btn(BTN.lookEarring, "none")]);
     expect(await state()).toBe("LOOK_PICK");
 
@@ -321,25 +322,172 @@ describe("caps and failures", () => {
     expect(await app.ledger.youcamUnitsToday()).toBe(3);
   });
 
-  it("a failed step costs nothing; the earlier paid step is kept for the next attempt", async () => {
+  it("a refused item is left out and the look goes on; the chat says which item and why", async () => {
     fake.opts.failFeatures = ["2d-vto/earring"];
+    fake.opts.featureErrors = { "2d-vto/earring": "2: earlobe alignment not confident." };
     await toPreview();
     await pickAll();
     await tap(BTN.lookShow);
     await settle();
-    const last = (await history()).slice(-1);
-    expect(texts(last)).toMatch(/couldn't make that look\. Nothing was charged to you/);
-    expect(await state()).toBe("PREVIEW");
-    expect(await db.prisma.look.findFirstOrThrow()).toMatchObject({ status: "failed", units: 1 });
-    expect(await app.ledger.youcamUnitsToday()).toBe(3); // try-on 2 + necklace 1; the failed earring 0
 
+    const h = await history();
+    expect(texts(h)).toMatch(/I couldn't add the earrings \(Gold jhumka\): your hair covers your ears in this photo\./);
+    expect(texts(h)).toMatch(/You can still add it to your order\. It won't be in the picture, and your order card will say "not shown"\./);
+    // the rest of the look was made and is shown
+    const look = await db.prisma.look.findFirstOrThrow();
+    expect(look).toMatchObject({ status: "succeeded", units: 2, unitsWasted: 0 });
+    expect(look.skipped).toEqual([{ kind: "earring", accessoryId: acc.jhumka.id, reason: "ears_hidden", detail: "2: earlobe alignment not confident." }]);
+    expect(h.filter((m) => m.kind === "image").slice(-2).map((m) => (m as { mediaKey: string }).mediaKey)).toEqual([look.outputKey, look.closeupKey]);
+    expect(buttonIds(h).slice(-5)).toEqual([BTN.orderLook, BTN.order, btn(BTN.addUnshown, acc.jhumka.id), BTN.completeLook, BTN.tryAnother]);
+    expect(await state()).toBe("PREVIEW");
+    // a refusal is free
+    expect(await app.ledger.youcamUnitsToday()).toBe(4); // try-on 2 + necklace 1 + lipstick 1
+    expect(lookStarts()).toEqual(["2d-vto/necklace", "2d-vto/earring", "makeup-vto"]);
+
+    // remembered by content hash: the same earring on the same picture is never sent again
     fake.opts.failFeatures = [];
+    await pickAll(undefined, "1");
+    await tap(BTN.lookShow);
+    await settle();
+    expect(lookStarts()).toEqual(["2d-vto/necklace", "2d-vto/earring", "makeup-vto", "makeup-vto"]);
+    expect(texts((await history()).slice(-6))).toMatch(/your hair covers your ears/);
+  });
+
+  it("a refused necklace gets its own plain reason", async () => {
+    fake.opts.failFeatures = ["2d-vto/necklace"];
+    fake.opts.featureErrors = { "2d-vto/necklace": "4: Neck roll check failed." };
+    await toPreview();
     await pickAll();
     await tap(BTN.lookShow);
     await settle();
-    // necklace reused, earring and lipstick new
-    expect(lookStarts()).toEqual(["2d-vto/necklace", "2d-vto/earring", "2d-vto/earring", "makeup-vto"]);
-    expect(await db.prisma.look.findFirstOrThrow()).toMatchObject({ status: "succeeded", units: 2 });
+    expect(texts(await history())).toMatch(/I couldn't add the necklace \(Temple necklace\): the neck isn't clear enough in this photo to place one\./);
+    expect((await db.prisma.look.findFirstOrThrow()).skipped).toMatchObject([{ kind: "necklace", reason: "neck_unclear" }]);
+  });
+
+  it("earrings on one ear only are rejected: paid, never shown, recorded as wasted, never rendered again", async () => {
+    fake.opts.oneEarring = true;
+    await toPreview();
+    await pickAll();
+    await tap(BTN.lookShow);
+    await settle();
+
+    const h = await history();
+    expect(texts(h)).toMatch(/I left out the earrings \(Gold jhumka\): they came out on one ear only, which would be misleading\./);
+    const look = await db.prisma.look.findFirstOrThrow();
+    expect(look).toMatchObject({ status: "succeeded", units: 3, unitsWasted: 1 });
+    expect(look.skipped).toMatchObject([{ kind: "earring", reason: "one_sided" }]);
+    const step = await db.prisma.lookStep.findFirstOrThrow({ where: { feature: "2d-vto/earring" } });
+    expect(step).toMatchObject({ status: "failed", units: 1, unitsWasted: 1, rejection: "one_sided", outputKey: null });
+    expect(await app.ledger.youcamUnitsToday()).toBe(5); // the rejected earring was still charged by the API
+
+    // falls back to the image from before the earring step: no earring-coloured pixels in the close-up
+    const closeup = await sharp((await app.blobs.get(look.closeupKey!))!.bytes).removeAlpha().raw().toBuffer();
+    let pink = 0;
+    for (let i = 0; i < closeup.length; i += 3) if (closeup[i] > 180 && closeup[i + 1] < 110 && closeup[i + 2] > 110 && closeup[i + 2] < 180) pink++;
+    expect(pink).toBe(0);
+
+    // remembered: another look with the same earring does not pay for it again
+    await pickAll(undefined, "1");
+    await tap(BTN.lookShow);
+    await settle();
+    expect(lookStarts().filter((f) => f === "2d-vto/earring")).toHaveLength(1);
+    expect((await db.prisma.look.findMany({ orderBy: { createdAt: "asc" } })).map((l) => [l.units, l.unitsWasted])).toEqual([
+      [3, 1],
+      [1, 0],
+    ]);
+  });
+
+  it("a refused item can't be ordered as part of the look, but can be added without a picture: the card says 'not shown'", async () => {
+    fake.opts.failFeatures = ["2d-vto/earring"];
+    fake.opts.featureErrors = { "2d-vto/earring": "2: earlobe alignment not confident." };
+    await toPreview();
+    await pickAll();
+    await tap(BTN.lookShow);
+    await settle();
+
+    // "Order this look" alone: the earrings are not in the picture, so they are not on the order
+    await tap(BTN.orderLook);
+    await tap(BTN.skipPhone);
+    const plain = await db.prisma.order.findFirstOrThrow({ include: { items: true } });
+    expect(plain.items.map((i) => [i.type, i.shown])).toEqual([["necklace", true]]);
+    expect(JSON.stringify(plain.lookItems)).not.toMatch(/jhumka/);
+    await app.orders.decide(seed.seller.id, plain.id, "reject");
+    await db.prisma.order.deleteMany();
+
+    // again, this time adding the earrings without a picture
+    await tap(BTN.tryAnother);
+    await tap(btn(BTN.garment, seed.garment.id));
+    await pickAll();
+    await tap(BTN.lookShow);
+    await settle();
+    const added = await tap(btn(BTN.addUnshown, acc.jhumka.id));
+    expect(texts(added)).toMatch(/Added to your order: Gold jhumka · ₹450\. It isn't in the picture; your order card will list it as "not shown"\./);
+    expect(buttonIds(added)).toEqual([BTN.orderLook, BTN.order, BTN.tryAnother]);
+    await tap(BTN.orderLook);
+    await tap(BTN.skipPhone);
+
+    const order = await db.prisma.order.findFirstOrThrow({ include: { items: { orderBy: { type: "asc" } }, garment: true, seller: true, tryOn: true, look: true } });
+    expect(order.items.map((i) => [i.type, i.label, i.shown])).toEqual([
+      ["earring", "Gold jhumka", false],
+      ["necklace", "Temple necklace", true],
+    ]);
+    const card = buildOrderCard(order);
+    expect(card.imageKey).toBe(order.look!.outputKey); // the look, which does not contain the earrings
+    expect(card.totalInr).toBe(1899 + 1250 + 450);
+    expect(card.lines).toContain("• Necklace: Temple necklace · ₹1,250");
+    expect(card.lines).toContain("• Earrings: Gold jhumka (not shown) · ₹450");
+    // an item the buyer was not offered can't be slipped in
+    expect(texts(await tap(btn(BTN.addUnshown, acc.stud.id)))).not.toMatch(/Added to your order/);
+  });
+
+  it("nothing could be placed: reasons are given, the preview stays, and the item can still be ordered 'not shown'", async () => {
+    fake.opts.failFeatures = ["2d-vto/earring"];
+    fake.opts.featureErrors = { "2d-vto/earring": "2: earlobe alignment not confident." };
+    await toPreview();
+    await tap(BTN.completeLook);
+    await tap(btn(BTN.lookEarring, acc.jhumka.id));
+    await tap(BTN.neckNo);
+    await tap(btn(BTN.lookLip, "none"));
+    await tap(BTN.lookShow);
+    await settle();
+
+    const h = await history();
+    expect(texts(h)).toMatch(/your hair covers your ears in this photo[\s\S]*So there is no new picture: your preview is unchanged\. Nothing was charged to you\./);
+    expect(await state()).toBe("PREVIEW");
+    expect(await app.ledger.youcamUnitsToday()).toBe(2); // only the try-on
+    expect(buttonIds(h).slice(-6)).toEqual([btn(BTN.addUnshown, acc.jhumka.id), BTN.order, BTN.completeLook, BTN.askFamily, BTN.tryAnother, BTN.newPhoto]);
+
+    await tap(btn(BTN.addUnshown, acc.jhumka.id));
+    await tap(BTN.orderLook);
+    await tap(BTN.skipPhone);
+    const order = await db.prisma.order.findFirstOrThrow({ include: { items: true, garment: true, seller: true, tryOn: true, look: true } });
+    expect(order.lookId).toBeNull();
+    expect(order.items.map((i) => [i.label, i.shown])).toEqual([["Gold jhumka", false]]);
+    const card = buildOrderCard(order);
+    expect(card.imageKey).toBe(order.tryOn!.outputKey); // the plain try-on
+    expect(card.closeupKey).toBeNull();
+    expect(card.lines.slice(0, 4)).toEqual(["Ordered:", "• saree · ₹1,899", "• Earrings: Gold jhumka (not shown) · ₹450", "Total ₹2,349"]);
+  });
+
+  it("a technical failure (not a refusal) still fails the look, costs nothing, and can be retried", async () => {
+    await toPreview();
+    fake.opts.failStartWith = 500;
+    await tap(BTN.completeLook);
+    await tap(btn(BTN.lookEarring, "none"));
+    await tap(BTN.neckNo);
+    await tap(btn(BTN.lookLip, "0"));
+    await tap(BTN.lookShow);
+    await settle();
+    expect(texts((await history()).slice(-1))).toMatch(/couldn't make that look\. Nothing was charged to you/);
+    expect(await db.prisma.lookStep.findFirstOrThrow()).toMatchObject({ status: "failed", rejection: null });
+
+    await tap(BTN.completeLook);
+    await tap(btn(BTN.lookEarring, "none"));
+    await tap(BTN.neckNo);
+    await tap(btn(BTN.lookLip, "0"));
+    await tap(BTN.lookShow);
+    await settle();
+    expect(await db.prisma.look.findFirstOrThrow()).toMatchObject({ status: "succeeded", units: 1 });
   });
 
   it("a look interrupted mid-step resumes by polling the saved task, never starting it twice", async () => {

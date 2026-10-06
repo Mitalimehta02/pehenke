@@ -3,7 +3,7 @@ import type { FamilyVoteService, VoteEvent } from "../family/service";
 import type { Accessory, Conversation, ConvState, Garment, Prisma, PrismaClient, Seller } from "../generated/prisma/client";
 import { links, waLink } from "../links";
 import { lipShadesForGarment } from "../look/lipShade";
-import { accessoryTryable, type LookPrep, type LookService } from "../look/service";
+import { accessoryTryable, type LookPrep, type LookService, type SkippedItem } from "../look/service";
 import { normalizePhone } from "../orders/phone";
 import { checkBuyerPhoto } from "../photos/buyerPhoto";
 import type { BlobStore } from "../storage/blobs";
@@ -74,6 +74,10 @@ interface Ctx {
   lookNeckBare?: boolean | null;
   /** "Order this look": the look and its jewellery go on the order */
   orderLook?: boolean;
+  /** jewellery that could not be placed on this preview (may be ordered without a picture) */
+  lookSkipped?: string[];
+  /** of those, the ones the buyer added to the order: listed on the card as "not shown" */
+  addUnshown?: string[];
 }
 
 interface Turn {
@@ -404,6 +408,7 @@ export class Engine {
     if (button === BTN.order && t.state === "PREVIEW") return this.askPhone(t, false);
     if (button === BTN.orderLook && t.state === "PREVIEW") return this.askPhone(t, true);
     if (button === BTN.completeLook && t.state === "PREVIEW") return this.startLook(t);
+    if (button.startsWith(`${BTN.addUnshown}:`) && t.state === "PREVIEW") return this.addUnshown(t, param(button));
     if (button === BTN.askFamily) return this.askFamily(t);
     if (t.state === "AWAIT_SELLER") {
       t.out.push({ kind: "text", text: copy.waitingSeller(t.seller.name), buttons: [this.b(BTN.tryAnother, copy.buttons.tryAnother)] });
@@ -455,7 +460,7 @@ export class Engine {
       return;
     }
     // a new preview starts without a look
-    t.ctx = { ...t.ctx, garmentId: tryOn.garmentId, previewTryOnId: tryOn.id, orderId: undefined, look: undefined, pendingLookId: undefined, lookId: undefined, lookNeckBare: undefined, orderLook: undefined };
+    t.ctx = { ...t.ctx, garmentId: tryOn.garmentId, previewTryOnId: tryOn.id, orderId: undefined, look: undefined, pendingLookId: undefined, lookId: undefined, lookNeckBare: undefined, orderLook: undefined, lookSkipped: undefined, addUnshown: undefined };
     t.out.push({
       kind: "image",
       mediaKey: tryOn.outputKey,
@@ -504,6 +509,8 @@ export class Engine {
     t.ctx.look = { tryOnId: tryOn.id, lips };
     t.ctx.lookId = undefined;
     t.ctx.orderLook = undefined;
+    t.ctx.lookSkipped = undefined;
+    t.ctx.addUnshown = undefined;
     t.state = "LOOK_PICK";
     t.out.push({ kind: "text", text: copy.lookIntro() });
     return this.lookNext(t);
@@ -634,26 +641,63 @@ export class Engine {
 
   /** Show a finished look as two images: the full-body look and the close-up (the better guide for jewellery). */
   private async showLook(t: Turn, lookId: string) {
-    const look = lookId ? await this.d.prisma.look.findUnique({ where: { id: lookId } }) : null;
+    const look = lookId ? await this.d.prisma.look.findUnique({ where: { id: lookId }, include: { necklace: true, earring: true } }) : null;
     t.ctx.look = undefined;
     t.ctx.pendingLookId = undefined;
+    t.ctx.addUnshown = undefined;
     t.state = "PREVIEW";
     t.out.push({ kind: "status", status: "idle" });
+
+    // Items that could not be placed: say which and why. Jewellery can still be ordered without a picture.
+    const skipped = (Array.isArray(look?.skipped) ? look.skipped : []) as unknown as SkippedItem[];
+    const unshown: Accessory[] = [];
+    for (const s of skipped) {
+      const a = s.kind === "earring" ? look?.earring : s.kind === "necklace" ? look?.necklace : null;
+      t.out.push({ kind: "text", text: copy.lookSkipped(s.kind, a?.label ?? "", s.reason) });
+      if (a && accessoryTryable(a)) unshown.push(a);
+    }
+    t.ctx.lookSkipped = unshown.length ? unshown.map((a) => a.id) : undefined;
+    const unshownButtons = unshown.map((a) => this.b(btn(BTN.addUnshown, a.id), copy.buttons.addUnshown(a.label)));
+    if (unshown.length) t.out.push({ kind: "text", text: copy.lookUnshownOffer() });
+
     if (!look || look.status !== "succeeded" || !look.outputKey || !look.closeupKey) {
       t.ctx.lookId = undefined;
-      return void t.out.push({ kind: "text", text: copy.lookFailed(), buttons: this.previewButtons() });
+      // nothing placed at all (reasons given above), or a technical failure
+      return void t.out.push({ kind: "text", text: skipped.length ? copy.lookNothingPlaced() : copy.lookFailed(), buttons: [...unshownButtons, ...this.previewButtons()] });
     }
     t.ctx.lookId = look.id;
-    const hasJewellery = !!(look.necklaceId || look.earringId);
+    const out = new Set(skipped.map((s) => s.kind));
+    const hasJewellery = (!!look.necklaceId && !out.has("necklace")) || (!!look.earringId && !out.has("earring"));
     t.out.push({ kind: "image", mediaKey: look.outputKey, caption: copy.lookResult() });
     t.out.push({
       kind: "image",
       mediaKey: look.closeupKey,
-      caption: copy.lookCloseup(hasJewellery, !!look.lipHex),
+      caption: copy.lookCloseup(hasJewellery, !!look.lipHex && !out.has("lip")),
       buttons: [
         this.b(BTN.orderLook, copy.buttons.orderLook),
         this.b(BTN.order, copy.buttons.orderOutfitOnly),
+        ...unshownButtons,
         this.b(BTN.completeLook, copy.buttons.changeLook),
+        this.b(BTN.tryAnother, copy.buttons.tryAnother),
+      ],
+    });
+  }
+
+  /** Add an item that could not be placed on the photo to the order anyway: no picture, "not shown" on the card. */
+  private async addUnshown(t: Turn, accessoryId: string) {
+    const offered = t.ctx.lookSkipped ?? [];
+    const a = offered.includes(accessoryId) ? await this.d.prisma.accessory.findFirst({ where: { id: accessoryId, sellerId: t.seller.id } }) : null;
+    if (!a || !accessoryTryable(a)) return void t.out.push({ kind: "text", text: copy.lookRefused("not_available", 0), buttons: this.previewButtons() });
+    const added = new Set([...(t.ctx.addUnshown ?? []), a.id]);
+    t.ctx.addUnshown = [...added];
+    const rest = await this.d.prisma.accessory.findMany({ where: { id: { in: offered.filter((id) => !added.has(id)) } } });
+    t.out.push({
+      kind: "text",
+      text: copy.unshownAdded(a.label, a.priceInr),
+      buttons: [
+        this.b(BTN.orderLook, copy.buttons.orderWithAdded),
+        this.b(BTN.order, copy.buttons.orderOutfitOnly),
+        ...rest.filter(accessoryTryable).map((r) => this.b(btn(BTN.addUnshown, r.id), copy.buttons.addUnshown(r.label))),
         this.b(BTN.tryAnother, copy.buttons.tryAnother),
       ],
     });
@@ -662,7 +706,8 @@ export class Engine {
   /** "Order this" / "Order this look": ask for a WhatsApp number (optional) before the order goes to the seller. */
   private async askPhone(t: Turn, withLook: boolean) {
     if (!t.ctx.previewTryOnId || !t.ctx.garmentId) return this.listGarments(t);
-    t.ctx.orderLook = withLook && !!t.ctx.lookId;
+    // "the look" = the look image (if one was made) plus any items added without a picture
+    t.ctx.orderLook = withLook && (!!t.ctx.lookId || !!t.ctx.addUnshown?.length);
     t.out.push({ kind: "text", text: copy.askPhone(t.seller.name), buttons: [this.b(BTN.skipPhone, copy.buttons.skipPhone)] });
     t.state = "AWAIT_PHONE";
   }
@@ -686,12 +731,22 @@ export class Engine {
         ? await prisma.look.findFirst({ where: { id: t.ctx.lookId, tryOnId: tryOn.id, status: "succeeded" }, include: { necklace: true, earring: true } })
         : null;
     const lookItems: LookItem[] = [];
+    const ordered: Array<{ a: Accessory; shown: boolean }> = [];
     if (look) {
+      // an item that was left out of the look is not in the picture, so it is never ordered "as part of the look"
+      const skipped = new Set(((Array.isArray(look.skipped) ? look.skipped : []) as unknown as SkippedItem[]).map((s) => s.kind));
       for (const a of [look.earring, look.necklace]) {
-        if (a) lookItems.push({ kind: a.type, label: a.label, priceInr: a.priceInr, ordered: true, fromSellerPhoto: true });
+        if (a && !skipped.has(a.type)) ordered.push({ a, shown: true });
       }
-      if (look.lipHex) lookItems.push({ kind: "lip", label: look.lipName ?? look.lipHex, priceInr: null, ordered: false, fromSellerPhoto: false, hex: look.lipHex });
+      if (look.lipHex && !skipped.has("lip")) lookItems.push({ kind: "lip", label: look.lipName ?? look.lipHex, priceInr: null, ordered: false, fromSellerPhoto: false, hex: look.lipHex });
     }
+    if (t.ctx.orderLook && t.ctx.addUnshown?.length) {
+      // added by the buyer although it could not be placed on the photo: on the order, "not shown" on the card
+      const offered = new Set(t.ctx.lookSkipped ?? []);
+      const extra = await prisma.accessory.findMany({ where: { id: { in: t.ctx.addUnshown.filter((id) => offered.has(id)) }, sellerId: t.seller.id }, orderBy: { createdAt: "asc" } });
+      for (const a of extra.filter(accessoryTryable)) ordered.push({ a, shown: false });
+    }
+    lookItems.unshift(...ordered.map(({ a, shown }) => ({ kind: a.type, label: a.label, priceInr: a.priceInr, ordered: true, fromSellerPhoto: shown, shown })));
     const order = await prisma.order.create({
       data: {
         sellerId: t.seller.id,
@@ -703,9 +758,9 @@ export class Engine {
         pixelSummary: { verdict: tryOn.verdict, blockReason: tryOn.blockReason, pixelChecks: tryOn.pixelChecks ?? null } as Prisma.InputJsonValue,
         buyerWhatsapp: phone,
         lookId: look?.id ?? null,
-        lookNeckBare: look ? (t.ctx.lookNeckBare ?? null) : null,
-        lookItems: look ? (lookItems as unknown as Prisma.InputJsonValue) : undefined,
-        items: look ? { create: [look.earring, look.necklace].filter((a): a is Accessory => !!a).map((a) => ({ accessoryId: a.id, type: a.type, label: a.label, priceInr: a.priceInr })) } : undefined,
+        lookNeckBare: t.ctx.orderLook ? (t.ctx.lookNeckBare ?? null) : null,
+        lookItems: lookItems.length ? (lookItems as unknown as Prisma.InputJsonValue) : undefined,
+        items: ordered.length ? { create: ordered.map(({ a, shown }) => ({ accessoryId: a.id, type: a.type, label: a.label, priceInr: a.priceInr, shown })) } : undefined,
       },
     });
     t.ctx.orderId = order.id;

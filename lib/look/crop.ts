@@ -179,3 +179,39 @@ export async function pasteChanged(base: Uint8Array, box: CropBox, before: Uint8
     return { full, changedShare: changed / (w * h) };
   });
 }
+
+// ---------------- earring result check ----------------
+
+/** below this left/right balance an earring result counts as one ear only (good results: 0.59 and 0.75; the bad one: 0.00) */
+export const ONE_SIDED_MAX_RATIO = 0.25;
+
+/**
+ * Did the earring step draw on both ears? Counts strongly changed pixels left
+ * and right of the face (the face itself is excluded). `face` is the face
+ * centre and size as fractions of the crop's width / height. A frontal face
+ * (the only kind the pipeline accepts) should get an earring on each side.
+ */
+export async function earringSides(before: Uint8Array, after: Uint8Array, face: { cx: number; cy: number; size: number }): Promise<{ left: number; right: number; oneSided: boolean }> {
+  return withImageSlot(async () => {
+    const A = await sharp(before).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width: w, height: h } = A.info;
+    const B = await sharp(after).removeAlpha().resize(w, h, { fit: "fill" }).raw().toBuffer();
+    const cx = face.cx * w;
+    const cy = face.cy * h;
+    const s = face.size * w;
+    let left = 0;
+    let right = 0;
+    for (let y = Math.max(0, Math.round(cy - 0.3 * s)); y < Math.min(h, Math.round(cy + 1.0 * s)); y++) {
+      for (let x = 0; x < w; x++) {
+        if (Math.abs(x - cx) < 0.33 * s) continue;
+        const i = (y * w + x) * 3;
+        const d = Math.max(Math.abs(A.data[i] - B[i]), Math.abs(A.data[i + 1] - B[i + 1]), Math.abs(A.data[i + 2] - B[i + 2]));
+        if (d <= 40) continue;
+        if (x < cx) left++;
+        else right++;
+      }
+    }
+    const max = Math.max(left, right);
+    return { left, right, oneSided: max > 0 && Math.min(left, right) / max < ONE_SIDED_MAX_RATIO };
+  });
+}

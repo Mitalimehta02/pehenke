@@ -71,6 +71,7 @@ export const sellerCopy = {
   // Order approval: what the look image shows
   lookFromYourPhotos: "Drawn from your photos",
   lookStyling: "Styling suggestion, not something you sell",
+  lookNotShown: "Ordered, but NOT in the picture (it could not be placed on the buyer's photo)",
   lookOrdered: "ordered",
   lookShownOnly: "shown only, not ordered",
   neckAnswer: (bare: boolean | null) =>

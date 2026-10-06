@@ -6,6 +6,9 @@
 // the first earring (only where the ear check passes), the necklace (only where a person has
 // confirmed the neck is bare in that render: NECK_BARE below), and the first proposed lip
 // shade. Steps are cached, so nothing is ever rendered twice. Needs the database.
+//
+// npm run prerender:looks -- --lip-only   -> only the renders whose look failed earlier and that
+//                                            have no finished look: a lip-shade-only look for each.
 import "dotenv/config";
 import { parseArgs } from "node:util";
 import { getApp } from "@/lib/server/app";
@@ -30,7 +33,8 @@ const NECK_BARE: Record<string, boolean> = {
 };
 
 async function main() {
-  const { values: args } = parseArgs({ options: { yes: { type: "boolean", default: false }, "max-units": { type: "string", default: "20" } } });
+  const { values: args } = parseArgs({ options: { yes: { type: "boolean", default: false }, "lip-only": { type: "boolean", default: false }, "max-units": { type: "string", default: "20" } } });
+  const lipOnly = args["lip-only"];
   const maxUnits = Number(args["max-units"]);
   const app = await getApp();
   const { prisma, blobs } = app;
@@ -48,6 +52,10 @@ async function main() {
   const plan: Array<{ name: string; tryOnId: string; choice: { earringId: string | null; necklaceId: string | null; lip: { hex: string; name: string } | null }; units: number; note: string }> = [];
   for (const t of renders) {
     const name = `${t.buyerPhoto.sampleName} | ${t.garment.label}`;
+    if (lipOnly) {
+      const looks = await prisma.look.findMany({ where: { tryOnId: t.id }, select: { status: true } });
+      if (looks.some((l) => l.status === "succeeded") || !looks.some((l) => l.status === "failed")) continue;
+    }
     const { prep } = await app.looks.prepare(t.id); // free: face, crop, ear check, close-up
     if (!(prep as LookPrep).crop) {
       console.log(`  skip   ${name}: no usable face (${prep.problem})`);
@@ -56,16 +64,20 @@ async function main() {
     const garmentPhoto = await blobs.get(t.garment.photoKey);
     const lip = garmentPhoto ? (await lipShadesForGarment(garmentPhoto.bytes)).shades[0] : null;
     const choice = {
-      earringId: earring && prep.earsClear ? earring.id : null,
-      necklaceId: necklace && NECK_BARE[name] === true ? necklace.id : null,
+      earringId: !lipOnly && earring && prep.earsClear ? earring.id : null,
+      necklaceId: !lipOnly && necklace && NECK_BARE[name] === true ? necklace.id : null,
       lip: lip ? { hex: lip.hex, name: lip.name } : null,
     };
     const units = await app.looks.estimate({ tryOnId: t.id, ...choice });
-    const note = [
-      choice.earringId ? "earring" : earring ? `no earring (ears ${prep.earPct}% / forehead ${prep.foreheadPct}% changed by the try-on)` : "",
-      choice.necklaceId ? "necklace" : NECK_BARE[name] === undefined ? "no necklace (neck not reviewed)" : "no necklace (neck not bare)",
-      lip ? `lip ${lip.name} ${lip.hex}` : "",
-    ]
+    const note = (
+      lipOnly
+        ? [lip ? `lip ${lip.name} ${lip.hex} only` : ""]
+        : [
+            choice.earringId ? "earring" : earring ? `no earring (ears ${prep.earPct}% / forehead ${prep.foreheadPct}% changed by the try-on)` : "",
+            choice.necklaceId ? "necklace" : NECK_BARE[name] === undefined ? "no necklace (neck not reviewed)" : "no necklace (neck not bare)",
+            lip ? `lip ${lip.name} ${lip.hex}` : "",
+          ]
+    )
       .filter(Boolean)
       .join(", ");
     plan.push({ name, tryOnId: t.id, choice, units, note });
@@ -83,7 +95,7 @@ async function main() {
     await app.looks.idle(); // one at a time
     if (r.kind !== "refused") {
       const look = await prisma.look.findUniqueOrThrow({ where: { id: r.look.id } });
-      console.log(`      -> ${look.status}${look.error ? `: ${look.error}` : ""}, ${look.units} unit(s)`);
+      console.log(`      -> ${look.status}${look.error ? `: ${look.error}` : ""}, ${look.units} unit(s)${look.unitsWasted ? `, ${look.unitsWasted} wasted` : ""}${look.skipped ? `, left out: ${JSON.stringify(look.skipped)}` : ""}`);
     }
   }
   await app.ledger.flush();

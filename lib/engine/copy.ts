@@ -32,6 +32,8 @@ export const copy = {
     lookRestart: "Start again",
     lookBack: "Back to my preview",
     orderLook: "Order this look",
+    orderWithAdded: "Order with the added items",
+    addUnshown: (label: string) => `Add ${label} (not shown)`,
     orderOutfitOnly: "Order outfit only",
     changeLook: "Change the look",
   },
@@ -169,7 +171,8 @@ export const copy = {
     problem === "several_faces"
       ? "I can only complete the look when there's one person in the picture. Your preview is still here."
       : "I couldn't find your face clearly enough in this preview to add jewellery or lip colour. Your preview is still here.",
-  pickEarring: () => "Earrings: which would you like to see?",
+  // no free check can tell whether an ear is visible, so this is an attempt, not a promise
+  pickEarring: () => "Earrings: which shall I try? I'll try to add them; it works when your ears are visible in the photo.",
   earsCovered: () => "The outfit covers your ears in this picture (or already shows something there), so I can't add earrings to it.",
   neckQuestion: () => "Here's a close-up of your preview. Is your neck bare in this picture? I can only add a necklace if it is.",
   neckNotBare: () => "Then I won't add a necklace. Any jewellery already in the preview is illustrative and not included with the outfit.",
@@ -198,6 +201,20 @@ export const copy = {
     ]
       .filter(Boolean)
       .join(" "),
+  /** An item that was left out of the look, and why, in plain words. */
+  lookSkipped: (kind: "earring" | "necklace" | "lip", label: string, reason: string) =>
+    kind === "lip"
+      ? "I couldn't add the lip colour on this photo."
+      : reason === "ears_hidden"
+        ? `I couldn't add the earrings (${label}): your hair covers your ears in this photo.`
+        : reason === "one_sided"
+          ? `I left out the earrings (${label}): they came out on one ear only, which would be misleading.`
+          : reason === "neck_unclear"
+            ? `I couldn't add the necklace (${label}): the neck isn't clear enough in this photo to place one.`
+            : `I couldn't place the ${kind === "earring" ? "earrings" : "necklace"} (${label}) on this photo.`,
+  lookUnshownOffer: () => "You can still add it to your order. It won't be in the picture, and your order card will say \"not shown\".",
+  lookNothingPlaced: () => "So there is no new picture: your preview is unchanged. Nothing was charged to you.",
+  unshownAdded: (label: string, priceInr: number | null) => `Added to your order: ${label}${inr(priceInr)}. It isn't in the picture; your order card will list it as "not shown".`,
   lookFailed: () => "Sorry, I couldn't make that look. Nothing was charged to you. Your preview is still here; you can try again or order as it is.",
   lookRefused: (reason: string, looksPerDay: number) =>
     reason === "daily_cap"

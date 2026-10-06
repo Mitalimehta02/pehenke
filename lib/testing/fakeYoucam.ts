@@ -18,6 +18,10 @@ export interface FakeYouCamOptions {
   lose?: boolean;
   /** look features ("makeup-vto", "2d-vto/necklace", "2d-vto/earring") whose tasks end in a task error */
   failFeatures?: string[];
+  /** the task error text for a failing look feature (default "error_no_face") */
+  featureErrors?: Record<string, string>;
+  /** draw the earring on one ear only (seen live) */
+  oneEarring?: boolean;
   /** dev only: draw a look step from the real product photo / lip colour (else the synthetic patch) */
   renderLookFrom?: (feature: string, crop: Uint8Array, ref: Uint8Array | null, body: Record<string, unknown>) => Promise<Buffer | null>;
   /** dev only: return a real render for these inputs if known (else the synthetic one) */
@@ -85,7 +89,7 @@ export class FakeYouCam {
       if (!task || this.opts.lose) return this.json(400, { status: 400, error_code: "InvalidTaskId" });
       if (task.polls++ < (this.opts.runningPolls ?? 1)) return this.json(200, { status: 200, data: { task_status: "running" } });
       if (this.opts.taskError || this.opts.failFeatures?.includes(task.feature)) {
-        return this.json(200, { status: 200, data: { task_status: "error", error: this.opts.taskError ?? "error_no_face" } });
+        return this.json(200, { status: 200, data: { task_status: "error", error: this.opts.taskError ?? this.opts.featureErrors?.[task.feature] ?? "error_no_face" } });
       }
       return this.json(200, { status: 200, data: { task_status: "success", results: { url: `https://cdn.fake/${taskId}.png` } } });
     }
@@ -141,7 +145,9 @@ export class FakeYouCam {
         ? [box(0.44, 0.33, 0.12, 0.03, "#b02a1e")]
         : feature === "2d-vto/necklace"
           ? [box(0.36, 0.46, 0.28, 0.04, "#c9a227")]
-          : [box(0.33, 0.27, 0.03, 0.06, "#d43f8d"), box(0.64, 0.27, 0.03, 0.06, "#d43f8d")];
+          : this.opts.oneEarring
+            ? [box(0.66, 0.3, 0.03, 0.06, "#d43f8d")]
+            : [box(0.32, 0.3, 0.03, 0.06, "#d43f8d"), box(0.66, 0.3, 0.03, 0.06, "#d43f8d")];
     return sharp(crop).removeAlpha().composite(patches).png().toBuffer();
   }
 

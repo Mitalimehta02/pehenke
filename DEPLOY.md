@@ -17,14 +17,26 @@ Facts below are from Render's docs (deploys, free, node-version, health-checks p
 | Instances | 1 (the free plan runs one) |
 
 **Pre-deploy command: not available on Free** ("available for paid web services, private
-services, and background workers"). So migrations run inside the build (`build:render`):
-`scripts/migrate-if-configured.mjs` runs `prisma migrate deploy` when `DIRECT_URL` is present at
-build time and fails the build if the migration fails. Render's docs don't say whether dashboard
-env vars exist at build time; if they don't, the build log says `migrations SKIPPED` and you run
-`npm run db:migrate` from your machine (hotspot/WARP) before using the deploy. Check the first
-build log for which happened. Migrations are forward-only; a migration that succeeds while the
-rest of the build fails leaves the previous deploy running on the new schema, so keep
-migrations additive (add columns/tables; remove things in a later release).
+services, and background workers"). So migrations run inside the build (`build:render`), and
+**a build that can't apply them fails** (`scripts/migrate-if-configured.mjs`): it uses
+`DIRECT_URL`, or derives the direct connection from `DATABASE_URL` (Neon: the pooled host
+without `-pooler`); with neither, or if `prisma migrate deploy` fails, the build stops and
+Render keeps the previous version, which still matches the database. The first lines of the
+build log say which variables the build environment has (names only).
+Why not migrate at server start: the new code would serve requests for a moment against the
+old schema, a failed migration would crash-loop the server, and a free instance restarts often.
+History: two releases went live with their migrations skipped (the old script only warned),
+so ordering was broken on the live site until they were applied by hand on 2026-10-06.
+`SKIP_BUILD_MIGRATIONS=1` switches the build step off on purpose (run `npm run db:migrate`
+first). Migrations are forward-only; a migration that succeeds while the rest of the build
+fails leaves the previous deploy running on the new schema, so keep migrations additive
+(add columns/tables; remove things in a later release).
+
+`/api/health` answers `"status": "ok"` or `"degraded"` with the reasons (names and counts
+only): a required variable missing, the database unreachable, or migrations pending. It
+returns HTTP 503 for a missing required variable or pending migrations (a deploy in that
+state can't work), and 200 with `degraded` when the database is merely unreachable (it sleeps
+when idle). It queries the database at most once an hour while healthy; `?fresh=1` forces it.
 
 ## Environment variable names (values go in the Render dashboard, never in git)
 

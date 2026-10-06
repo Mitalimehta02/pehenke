@@ -72,6 +72,7 @@ export const BTN = {
   lookRestart: "look_restart",
   lookBack: "look_back",
   orderLook: "order_look",
+  addUnshown: "add_unshown", // add_unshown:<accessoryId>: order an item that could not be shown in the picture
 } as const;
 
 export const param = (id: string) => id.slice(id.indexOf(":") + 1);

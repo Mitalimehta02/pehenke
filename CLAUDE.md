@@ -180,6 +180,13 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
   paste-back of only the changed pixels. Paid: necklace -> earrings -> lipstick, 1 unit
   each, every step cached by hash (`LookStep`), task id saved before polling. The neck
   has no reliable automatic check: the buyer is shown the close-up and asked.
+  An item the API refuses (free) is left out and the look continues; earrings drawn on
+  one ear only are rejected by us (paid, recorded as wasted). Both are remembered on the
+  step (`LookStep.rejection`) and never rendered again. No free check can tell whether an
+  ear is visible, so earrings are offered as an attempt, not a promise. A left-out item
+  can still be ordered without a picture (`OrderItem.shown = false`, "not shown" on the card).
+- Deploys: `build:render` fails the build when pending migrations can't be applied
+  (DEPLOY.md). `/api/health` reports ok / degraded (names and counts only).
 - `lib/gate/accessoryGate.ts`: jewellery photo rules (one earring, pair -> crop to confirm;
   necklace in worn U shape; plain backdrop). `lib/accessories/`: seller jewellery.
 - A look ordered with "Order this look" puts its jewellery on the order (`OrderItem`,
