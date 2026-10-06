@@ -48,6 +48,8 @@ next-env.d.ts
 !/spike-assets/people/.gitkeep
 /spike-assets/garments/*
 !/spike-assets/garments/.gitkeep
+/spike-assets/jewellery/*
+!/spike-assets/jewellery/.gitkeep
 
 # prisma generated client (bot phase)
 /lib/generated/
