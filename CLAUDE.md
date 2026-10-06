@@ -120,7 +120,10 @@ spec). If something isn't in the spec, say so instead of guessing.
   the effect. Makeup smooths skin at 50 by default: always send `skin_smooth` strength 0.
   Omit optional jewellery fields rather than sending `null` (400, although the docs' sample
   does). Jewellery photos are used as given: necklace in its worn U shape, one earring.
-  The feature itself is not built yet.
+- Verified live: these features change odd image sizes (a 959x1199 crop came back 960x1198;
+  960x1200 came back unchanged), which breaks pixel alignment. The look pipeline sends
+  multiples of 16 and refuses to paste a result that differs across most of the crop.
+- Lipstick: matte at intensity 50 paints closest to the requested colour (70 is bolder).
 
 ## Skin tone: expensive, call once per buyer
 
@@ -171,6 +174,16 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
 - Family vote (`lib/family/`): public `/v/<token>`, 7 days, tally posted to the chat.
 - "Delete my photos" and the 30-day purge also clear WhatsApp numbers, card links/images
   and family links. Changing the consent text means bumping `CONSENT_VERSION`.
+- `lib/look/`: "complete the look" on a finished try-on. Free and local: face locator
+  (`faceFinder.ts`, bundled pico cascade), head-and-shoulders crop, ear/forehead change
+  check (earrings only when the try-on left them untouched), lip shades from the garment,
+  paste-back of only the changed pixels. Paid: necklace -> earrings -> lipstick, 1 unit
+  each, every step cached by hash (`LookStep`), task id saved before polling. The neck
+  has no reliable automatic check: the buyer is shown the close-up and asked.
+- `lib/gate/accessoryGate.ts`: jewellery photo rules (one earring, pair -> crop to confirm;
+  necklace in worn U shape; plain backdrop). `lib/accessories/`: seller jewellery.
+- A look ordered with "Order this look" puts its jewellery on the order (`OrderItem`,
+  `Order.lookItems`); the lip shade is always listed as a styling suggestion, not included.
 - Tests run the real migrations on in-process PGlite (`lib/testing/db.ts`) with a fake
   YouCam (`lib/testing/fakeYoucam.ts`). No network, no units.
 
@@ -197,6 +210,8 @@ in `auditorFromEnv()`. If `GEMINI_API_KEY` is unset the audit is skipped.
 - `npm run db:seed` — idempotent demo data (demo seller, garments through the real photo gate, sample photos; credits from spike-assets/SOURCES.md). No units.
 - `npm run dev:local` — local dev without Neon or units: LOCAL_PGLITE=1 (file-backed in-process Postgres in .pglite/) and YOUCAM_FAKE=1 (fake renderer that reuses real spike renders when available). Both flags are ignored in production.
 - `npm run spike:skintone -- --person <file>` — dry run; add `--yes` to spend
+- `npm run prerender:looks` — dry run: one look per cached sample render and its cost; `--yes` spends (only after approval)
+- `npm run spike:gate` / `spike:lipshades` — free: jewellery photo gate / lip shade proposals on the spike images
 - `npm run seller:create -- --name "Shop" [--slug x]` — real seller; prints the private seller link (once) and the buyer chat link. `--new-link <slug>` replaces a lost link. Same code as `/admin` (needs `ADMIN_SECRET`). No units.
 - `npm run spike -- --repeat N ...` — repeatability: N extra renders per job,
   cached under their own keys (the only sanctioned cache bypass)

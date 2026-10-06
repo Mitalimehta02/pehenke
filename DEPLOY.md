@@ -34,7 +34,7 @@ Recommended: `APP_URL` (`https://pehenke.onrender.com`; base of links sent on Wh
 `ADMIN_SECRET` (16+ random characters; enables `/admin` to create sellers; unset = no `/admin`)
 
 Optional: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_DAILY_LIMIT`, `YOUCAM_DAILY_UNIT_CAP`,
-`BUYER_DAILY_RENDERS`, `DB_STORAGE_LIMIT_MB`, `YOUCAM_SECRET_KEY`, `YOUCAM_BASE_URL`,
+`BUYER_DAILY_RENDERS`, `BUYER_DAILY_LOOKS`, `DB_STORAGE_LIMIT_MB`, `YOUCAM_SECRET_KEY`, `YOUCAM_BASE_URL`,
 `NODE_VERSION`, `NODE_OPTIONS` (recommended: `--max-old-space-size=384`)
 
 **Do not set:** `NODE_ENV` (the build needs devDependencies such as `typescript` and the
@@ -44,7 +44,8 @@ Optional: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_DAILY_LIMIT`, `YOUCAM_DAILY_
 ## One-time setup (from a developer machine; needs port 5432, i.e. hotspot/WARP)
 
 `npm run db:migrate`, `npm run db:seed`, `npm run prerender` (dry run), then
-`npm run prerender -- --yes --max-units <n>` after approving the cost. The demo images are
+`npm run prerender -- --yes --max-units <n>` after approving the cost. Then, for the demo's
+"Complete the look": `npm run prerender:looks` (dry run) and `-- --yes` after approving its cost. The demo images are
 gitignored, so the host can't seed; after seeding, everything lives in Neon.
 
 ## Memory (512 MB)

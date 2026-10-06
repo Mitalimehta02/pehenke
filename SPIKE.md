@@ -204,3 +204,21 @@ Findings:
 
 Not tested: a necklace on a bust stand, hair covering the ears, earring size (`earring_scale`),
 a real phone photo.
+
+### Follow-up while building (2026-10-06, 3 more units)
+
+- **Lipstick intensity.** Matte at 30 / 40 / 50 on the pipeline's own crop of the demo base
+  (1 unit each): painted colour #b7716d / #a75751 / #99433c against the proposed #b63420.
+  50 is the closest and reads as a natural lipstick; the spike's 70 was bolder. The app uses 50.
+- **Odd image sizes are changed by the API.** A 959x1199 crop came back as 960x1198, so
+  the result no longer lined up pixel for pixel with what was sent (the spike's 960x1200
+  came back unchanged). The pipeline now sends sizes that are multiples of 16 and refuses
+  to paste back a result that differs across more than 40% of the crop.
+- **Finding the crop.** A free local face locator (pico, MIT) found exactly one face on all
+  ten cached demo renders and none on a mannequin; its crop for the demo base landed within
+  8 px of the one picked by hand in the spike.
+- **Invented jewellery.** Comparing a render with the buyer's own photo is reliable around
+  the ears and forehead (clean renders 0-2% changed; a drawn forehead ornament or a dupatta
+  over the ear 8-41%), not at the neck (44-76% always, because the new neckline is there).
+  So earrings are offered only when the head is untouched, and for a necklace the buyer is
+  asked whether their neck is bare in the close-up.

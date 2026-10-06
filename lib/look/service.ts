@@ -26,8 +26,11 @@ import { findFaces, pickFace, type Face, type FaceFinder } from "./faceFinder";
 
 /** Bump when the crop geometry or request parameters change (invalidates cached looks). */
 export const PIPELINE_VERSION = "look-v1";
-/** Lipstick strength 0-100. Tuned so the result matches the proposed shade (70 came out too bold). */
-export const LIP_INTENSITY = 45;
+/**
+ * Lipstick strength 0-100, tuned on the demo base (SPIKE.md): of 30 / 40 / 50 / 70, 50 painted the
+ * colour closest to the proposed shade; 70 was visibly bolder, 30 barely showed.
+ */
+export const LIP_INTENSITY = 50;
 export const LIP_TEXTURE = "matte";
 
 const NECKLACE: LookFeature = "2d-vto/necklace";
@@ -272,7 +275,14 @@ export class LookService {
       cur = r.bytes;
     }
 
-    const pasted = await pasteChanged(base.bytes, prep.crop, before, cur);
+    let pasted;
+    try {
+      pasted = await pasteChanged(base.bytes, prep.crop, before, cur);
+    } catch (err) {
+      // e.g. the API returned an image that doesn't line up with the crop: never paste that
+      if (spent) await prisma.look.update({ where: { id: lookId }, data: { units: { increment: spent } } });
+      return this.fail(lookId, `paste-back refused: ${(err as Error).message}`);
+    }
     const full = await storeImage(blobs, "look", pasted.full, 90);
     const closeup = await storeImage(blobs, "look", cur, 90);
     await prisma.look.update({
@@ -327,6 +337,10 @@ export class LookService {
       if (!url) throw new Error("success without a result URL");
       const dl = await yc.download(url); // result URLs expire in ~2h: store now
       const want = await sharp(input).metadata();
+      const got = await sharp(dl.bytes).metadata();
+      if (got.width !== want.width || got.height !== want.height) {
+        console.warn(`[look] ${step.feature} returned ${got.width}x${got.height} for a ${want.width}x${want.height} crop`);
+      }
       // keep it lossless and the size of the input, so later steps and the paste-back compare exact pixels
       const png = await sharp(dl.bytes).removeAlpha().resize(want.width, want.height, { fit: "fill" }).png().toBuffer();
       const key = `lookstep/${step.hash.slice(0, 32)}.png`;

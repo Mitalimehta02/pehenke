@@ -19,6 +19,8 @@ takes about a minute to wake up).
 - `/v/[token]` — "Ask family": a 7-day yes/no vote on one try-on image
 - `lib/engine` — channel-agnostic conversation engine (`handle(message) -> messages`)
 - `lib/tryon` — YouCam try-on jobs: content-hash cache, caps, resume after restart
+- `lib/look` — "Complete the look": the seller's own earrings and necklace plus a lip shade, on a
+  close-up of the try-on, pasted back into the full picture
 - `SPIKE.md` — what the YouCam API spike found; `DEPLOY.md` — how to deploy
 
 ## Run locally

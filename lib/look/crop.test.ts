@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { personImage } from "../testing/fixtures";
-import { cropSize, cutCrop, headChanges, headCrop, pasteChanged, HEAD_CHANGED_MAX_PCT } from "./crop";
+import { cropSize, cutCrop, headChanges, headCrop, MisalignedResultError, pasteChanged, HEAD_CHANGED_MAX_PCT } from "./crop";
 import { findFaces, pickFace, type Face } from "./faceFinder";
 
 /** The head of the personImage fixture (600x1000): circle at (300, 100), radius 66. */
@@ -19,7 +19,10 @@ describe("headCrop", () => {
   it("frames head and shoulders around the face and enlarges it for the API", () => {
     const box = headCrop(FACE, 600, 1000)!;
     expect(box).toMatchObject({ left: 76, top: 0, width: 449, height: 561 });
-    expect(cropSize(box).width).toBeGreaterThanOrEqual(950);
+    // sent at 960x1200: both sides multiples of 16 (the API changes odd sizes, which breaks pixel alignment)
+    expect(cropSize(box)).toEqual({ width: 960, height: 1200 });
+    expect(cropSize({ left: 0, top: 0, width: 468, height: 585, scale: 2.05 })).toEqual({ width: 960, height: 1200 });
+    expect(cropSize({ left: 0, top: 0, width: 1003, height: 1251, scale: 1 })).toEqual({ width: 1008, height: 1248 });
     // the face is about 29% of the crop width: well above what the necklace feature needs
     expect((FACE.size * 600) / box.width).toBeGreaterThan(0.25);
   });
@@ -110,6 +113,15 @@ describe("pasteChanged", () => {
     // no softening anywhere else, although the crop was enlarged x2 and reduced again
     expect(outsideChanged).toBe(0);
     expect(insideRed).toBeGreaterThan(200);
+  });
+
+  it("refuses a result that differs across most of the crop (misaligned or altered everywhere)", async () => {
+    const base = await textured();
+    const box = headCrop(FACE, 600, 1000)!;
+    const before = await cutCrop(base, box);
+    // what a 1-pixel size change does: everything shifts
+    const shifted = await sharp(before).extract({ left: 3, top: 3, width: 950, height: 1190 }).resize(960, 1200, { fit: "fill" }).png().toBuffer();
+    await expect(pasteChanged(base, box, before, shifted)).rejects.toBeInstanceOf(MisalignedResultError);
   });
 
   it("an unchanged result gives back the base exactly", async () => {

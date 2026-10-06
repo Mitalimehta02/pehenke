@@ -45,7 +45,15 @@ export function headCrop(face: Face, imgW: number, imgH: number): CropBox | null
   return { left, top, width, height, scale };
 }
 
-export const cropSize = (b: CropBox) => ({ width: Math.round(b.width * b.scale), height: Math.round(b.height * b.scale) });
+/**
+ * Size of the crop as sent to the API. Both sides are multiples of 16: the API changes
+ * odd sizes (verified live: 959x1199 came back as 960x1198, 960x1200 came back unchanged),
+ * and a result of another size no longer lines up pixel for pixel with what was sent.
+ * The stretch this adds is under 1% and is undone exactly when the result is pasted back.
+ */
+const SIZE_STEP = 16;
+const toStep = (v: number) => Math.max(SIZE_STEP, Math.round(v / SIZE_STEP) * SIZE_STEP);
+export const cropSize = (b: CropBox) => ({ width: toStep(b.width * b.scale), height: toStep(b.height * b.scale) });
 
 /** The crop as sent to the API: enlarged, lossless PNG (so later steps and the paste-back compare exact pixels). */
 export function cutCrop(image: Uint8Array, box: CropBox): Promise<Buffer> {
@@ -110,6 +118,14 @@ export async function headChanges(original: Uint8Array, tryOn: Uint8Array, face:
 
 /** a crop pixel counts as changed by the API when any channel moved more than this (results are lossless PNG) */
 const PASTE_DIFF = 6;
+/**
+ * Jewellery plus a lip colour change a few percent of the crop. If most of it differs,
+ * the result isn't aligned with what was sent (or was altered everywhere): pasting it
+ * would soften or change the buyer's whole face, so it is refused.
+ */
+export const MAX_CHANGED_SHARE = 0.4;
+
+export class MisalignedResultError extends Error {}
 
 export interface PasteResult {
   /** full image, PNG: identical to the base outside the changed pixels */
@@ -141,6 +157,9 @@ export async function pasteChanged(base: Uint8Array, box: CropBox, before: Uint8
     }
     const baseRaw = () => sharp(base).rotate().removeAlpha();
     if (!changed) return { full: await baseRaw().png().toBuffer(), changedShare: 0 };
+    if (changed / (w * h) > MAX_CHANGED_SHARE) {
+      throw new MisalignedResultError(`the result differs from the crop on ${Math.round((changed / (w * h)) * 100)}% of its pixels`);
+    }
 
     // grow the mask slightly and soften its edge (in enlarged-crop pixels), then reduce patch and mask together
     const soft = await sharp(mask, { raw: { width: w, height: h, channels: 1 } }).blur(1.6).linear(3, 0).blur(0.8).extractChannel(0).raw().toBuffer();

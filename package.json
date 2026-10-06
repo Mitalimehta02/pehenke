@@ -18,11 +18,13 @@
     "spike:lipshades": "tsx --conditions=react-server scripts/spike/lipshades.ts",
     "spike:look": "tsx --conditions=react-server scripts/spike/look.ts",
     "spike:gate": "tsx --conditions=react-server scripts/spike/accessory-gate.ts",
+    "spike:liptune": "tsx --conditions=react-server scripts/spike/liptune.ts",
     "postinstall": "prisma generate",
     "db:seed": "tsx --conditions=react-server prisma/seed.ts",
     "db:migrate": "prisma migrate deploy",
     "dev:local": "cross-env LOCAL_PGLITE=1 YOUCAM_FAKE=1 next dev",
     "prerender": "tsx --conditions=react-server scripts/prerender.ts",
+    "prerender:looks": "tsx --conditions=react-server scripts/prerender-looks.ts",
     "seller:create": "tsx --conditions=react-server scripts/create-seller.ts",
     "build:render": "node scripts/migrate-if-configured.mjs && next build"
   },
