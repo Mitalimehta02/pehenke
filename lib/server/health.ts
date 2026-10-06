@@ -63,7 +63,9 @@ async function checkDatabase(): Promise<void> {
 }
 
 export async function health(fresh = false): Promise<Health> {
-  const missing = REQUIRED.filter((n) => !(isSet(n) || (n === "DATABASE_URL" && local())));
+  // local development: the in-process database needs no URL, the fake renderer needs no key
+  const fake = process.env.YOUCAM_FAKE === "1" && process.env.NODE_ENV !== "production";
+  const missing = REQUIRED.filter((n) => !(isSet(n) || (n === "DATABASE_URL" && local()) || (n === "YOUCAM_API_KEY" && fake)));
   const canCheckDb = !missing.includes("DATABASE_URL");
   if (canCheckDb && (fresh || !last || Date.now() - last.at > DB_CHECK_EVERY_MS || last.database !== "ok" || !!last.pending || !!last.failed)) {
     running ??= checkDatabase().finally(() => (running = undefined));

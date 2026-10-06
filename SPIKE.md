@@ -237,3 +237,6 @@ Planned 17 units for 8 sample renders; 7 were charged, 10 planned steps failed f
   not even the lip shade.
 - The database connection dropped mid-run. Nothing was lost: the one paid step in flight had
   its task id saved and was fetched on resume without a second charge.
+- Fill-in the same day (5 units): a lip-shade-only look for the five renders left without one.
+  All five succeeded. The demo then had 7 pre-rendered looks (2 with jewellery, 5 lip-only)
+  for 12 units in total, against a first plan of 17.

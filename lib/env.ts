@@ -2,8 +2,14 @@ import "server-only";
 import { z } from "zod";
 import { DEFAULT_APP_URL } from "./links";
 
+/**
+ * Local development with the fake renderer (`npm run dev:local`: YOUCAM_FAKE=1, never in
+ * production) makes no YouCam call, so it runs without a key.
+ */
+export const fakeRenderer = () => process.env.YOUCAM_FAKE === "1" && process.env.NODE_ENV !== "production";
+
 const schema = z.object({
-  YOUCAM_API_KEY: z.string().min(1, "YOUCAM_API_KEY is not set (see .env.example)"),
+  YOUCAM_API_KEY: z.preprocess((v) => ((v === "" || v == null) && fakeRenderer() ? "not-needed-with-the-fake-renderer" : v), z.string().min(1, "YOUCAM_API_KEY is not set (see .env.example)")),
   /** V1 token auth only (fallback); empty counts as unset */
   YOUCAM_SECRET_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   YOUCAM_BASE_URL: z.url().default("https://yce-api-01.makeupar.com"),

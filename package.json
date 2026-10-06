@@ -28,6 +28,7 @@
     "looks:resume": "tsx --conditions=react-server scripts/resume-looks.ts",
     "looks:drop": "tsx --conditions=react-server scripts/drop-look.ts",
     "seller:create": "tsx --conditions=react-server scripts/create-seller.ts",
+    "seller:create:local": "cross-env LOCAL_PGLITE=1 YOUCAM_FAKE=1 tsx --conditions=react-server scripts/create-seller.ts",
     "build:render": "node scripts/migrate-if-configured.mjs && cross-env NODE_OPTIONS=--max-old-space-size=1536 next build"
   },
   "dependencies": {

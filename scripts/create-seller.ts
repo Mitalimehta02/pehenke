@@ -30,7 +30,10 @@ async function main() {
   await prisma.$disconnect();
 }
 
-main().catch((err) => {
-  console.error(err instanceof OnboardError ? err.message : err);
-  process.exit(1);
-});
+// exit explicitly: the in-process local database keeps the event loop alive after disconnect
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err instanceof OnboardError ? err.message : err);
+    process.exit(1);
+  });
