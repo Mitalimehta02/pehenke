@@ -457,6 +457,8 @@ describe("deletion", () => {
 
     const o = await say("delete my photos");
     expect(texts(o)).toMatch(/1 photo and 1 try-on image \(with 1 completed look\)/);
+    // and says plainly what is kept
+    expect(texts(o)).toMatch(/Kept: the item list of your order \(the outfit and jewellery you ordered, with no photo of you\), so the shop can ship it\./);
     expect(await db.prisma.look.count()).toBe(0);
     expect(await db.prisma.lookStep.count()).toBe(0);
     for (const k of keys) expect(await app.blobs.get(k)).toBeNull();

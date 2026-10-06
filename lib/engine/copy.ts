@@ -144,8 +144,12 @@ export const copy = {
       s.cards ? `${s.cards} order card link${s.cards === 1 ? "" : "s"}` : "",
       s.familyLinks ? `${s.familyLinks} family vote link${s.familyLinks === 1 ? "" : "s"}` : "",
     ].filter(Boolean);
-    const also = shared.length ? ` Also deleted: ${shared.join(", ")}.` : "";
-    if (!s.photos && !s.renders) return shared.length ? `You have no photos stored with us.${also}` : "You have no photos stored with us. Nothing to delete.";
+    // say plainly what is NOT deleted: the order's item list, so the shop can still ship it
+    const kept = s.ordersKept
+      ? ` Kept: the item list of your ${s.ordersKept === 1 ? "order" : `${s.ordersKept} orders`} (the outfit${s.ordersKeptWithJewellery ? " and jewellery" : ""} you ordered, with no photo of you), so the shop can ship ${s.ordersKept === 1 ? "it" : "them"}.`
+      : "";
+    const also = (shared.length ? ` Also deleted: ${shared.join(", ")}.` : "") + kept;
+    if (!s.photos && !s.renders) return also ? `You have no photos stored with us.${also}` : "You have no photos stored with us. Nothing to delete.";
     const parts = [`Deleted from our servers: ${s.photos} photo${s.photos === 1 ? "" : "s"} and ${s.renders} try-on image${s.renders === 1 ? "" : "s"}${s.looks ? ` (with ${s.looks} completed look${s.looks === 1 ? "" : "s"})` : ""}.`];
     if (s.renders) {
       const done = s.youcam.deleted + s.youcam.alreadyGone;

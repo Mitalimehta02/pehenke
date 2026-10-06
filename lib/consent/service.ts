@@ -22,6 +22,9 @@ export interface DeletionSummary {
   cards: number;
   /** family vote links deleted */
   familyLinks: number;
+  /** orders whose item list is kept for the seller (what was ordered, no photo), and whether any includes jewellery */
+  ordersKept: number;
+  ordersKeptWithJewellery: boolean;
 }
 
 export interface ConsentDeps {
@@ -67,7 +70,9 @@ export class ConsentService {
     const createdAt = before ? { createdAt: { lt: before } } : {};
     const { result, keys } = await this.deletePhotoSet({ buyerId, ...createdAt }, { buyerId, ...createdAt });
     await this.scrubMessages(buyerId, keys);
-    return result;
+    // Orders are the seller's record of what to ship: the item list stays, without any photo.
+    const kept = await this.deps.prisma.order.findMany({ where: { buyerId, cardStatus: { not: "rejected" }, outcome: { not: "cancelled" } }, select: { _count: { select: { items: true } } } });
+    return { ...result, ordersKept: kept.length, ordersKeptWithJewellery: kept.some((o) => o._count.items > 0) };
   }
 
   /** Every buyer photo uploaded in one seller's chats (demo reset). Sample photos are never included. */
@@ -136,7 +141,7 @@ export class ConsentService {
       ].filter((k): k is string => !!k),
     );
     await blobs.delete(lookKeys.filter((k) => !lookStillUsed.has(k)));
-    return { result: { photos: photos.length, renders: renders.length, looks: looks.length, youcam, ...shared }, keys: new Set([...keys, ...lookKeys]) };
+    return { result: { photos: photos.length, renders: renders.length, looks: looks.length, youcam, ...shared, ordersKept: 0, ordersKeptWithJewellery: false }, keys: new Set([...keys, ...lookKeys]) };
   }
 
   /** Clear WhatsApp numbers and card links on matching orders, and delete matching family links. */
