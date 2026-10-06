@@ -254,7 +254,6 @@ export class LookService {
     const before = await cutCrop(base.bytes, prep.crop);
     let cur: Uint8Array = before;
     const steps = this.plan(look.tryOn, prep.crop, look.necklace, look.earring, look.lipHex);
-    let spent = 0;
     for (const step of steps) {
       let r: { bytes: Uint8Array; charged: number } | { error: string } | "still_running";
       try {
@@ -267,11 +266,9 @@ export class LookService {
         setTimeout(() => this.queue.push(() => this.run(lookId)), 30_000).unref?.();
         return;
       }
-      if ("error" in r) {
-        if (spent) await prisma.look.update({ where: { id: lookId }, data: { units: { increment: spent } } });
-        return this.fail(lookId, `${step.feature}: ${r.error}`);
-      }
-      spent += r.charged;
+      if ("error" in r) return this.fail(lookId, `${step.feature}: ${r.error}`);
+      // recorded as each step is paid, so an interrupted run never under-counts (seen live)
+      if (r.charged) await prisma.look.update({ where: { id: lookId }, data: { units: { increment: r.charged } } });
       cur = r.bytes;
     }
 
@@ -280,14 +277,13 @@ export class LookService {
       pasted = await pasteChanged(base.bytes, prep.crop, before, cur);
     } catch (err) {
       // e.g. the API returned an image that doesn't line up with the crop: never paste that
-      if (spent) await prisma.look.update({ where: { id: lookId }, data: { units: { increment: spent } } });
       return this.fail(lookId, `paste-back refused: ${(err as Error).message}`);
     }
     const full = await storeImage(blobs, "look", pasted.full, 90);
     const closeup = await storeImage(blobs, "look", cur, 90);
     await prisma.look.update({
       where: { id: lookId },
-      data: { status: "succeeded", finishedAt: this.now(), units: { increment: spent }, outputKey: full.key, closeupKey: closeup.key },
+      data: { status: "succeeded", finishedAt: this.now(), outputKey: full.key, closeupKey: closeup.key },
     });
     await this.deps.onFinished?.(lookId);
   }

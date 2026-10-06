@@ -222,3 +222,18 @@ a real phone photo.
   over the ear 8-41%), not at the neck (44-76% always, because the new neckline is there).
   So earrings are offered only when the head is untouched, and for a necklace the buyer is
   asked whether their neck is bare in the close-up.
+
+### Demo look pre-render on live (2026-10-06, 7 units)
+
+Planned 17 units for 8 sample renders; 7 were charged, 10 planned steps failed for free.
+
+- Sample model B: ivory saree (necklace + earrings + lip, 3 units) and ghagra (earrings + lip,
+  2 units) are good. The kurti (2 units) drew an earring on one ear only: dropped from the demo.
+- Sample model A, all four renders: earrings refused with "earlobe alignment not confident"
+  (her hair covers her ears). Free. Our own ear check passed these, because it only tests
+  whether the try-on changed the ear area, not whether an ear is visible.
+- Both lehenga renders: necklace refused with "Neck roll check failed". Free.
+- A failed step currently fails the whole look, so those renders have no look at all,
+  not even the lip shade.
+- The database connection dropped mid-run. Nothing was lost: the one paid step in flight had
+  its task id saved and was fetched on resume without a second charge.

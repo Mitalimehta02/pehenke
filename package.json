@@ -25,6 +25,8 @@
     "dev:local": "cross-env LOCAL_PGLITE=1 YOUCAM_FAKE=1 next dev",
     "prerender": "tsx --conditions=react-server scripts/prerender.ts",
     "prerender:looks": "tsx --conditions=react-server scripts/prerender-looks.ts",
+    "looks:resume": "tsx --conditions=react-server scripts/resume-looks.ts",
+    "looks:drop": "tsx --conditions=react-server scripts/drop-look.ts",
     "seller:create": "tsx --conditions=react-server scripts/create-seller.ts",
     "build:render": "node scripts/migrate-if-configured.mjs && next build"
   },
