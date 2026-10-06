@@ -36,13 +36,14 @@ licence. The image files themselves are gitignored; only this list and
 
 ## Jewellery (`spike-assets/jewellery/`)
 
-For the complete-the-look spike (earring and necklace try-on). Spike only.
+For complete-the-look (earring and necklace try-on). `earrings-pair.jpg` (cropped to one earring), `earrings-silver.jpg` (cropped to one earring) and `necklace-ushape.jpg` are also the demo shop's jewellery; the others are spike only.
 
 | File | Source | Author | Licence | Notes |
 |---|---|---|---|---|
 | `necklace-ushape.jpg` | [Khalili Collection Islamic Art jly 1261.6](https://commons.wikimedia.org/wiki/File:Khalili_Collection_Islamic_Art_jly_1261.6.jpg) | Khalili Collections | [CC BY-SA 3.0 igo](https://creativecommons.org/licenses/by-sa/3.0/igo) | Downscaled to 1920 px wide. Necklace laid in its worn (U) shape on a plain light background. |
 | `necklace-flatlay.jpg` | [Thali necklace](https://commons.wikimedia.org/wiki/File:Thali_necklace.jpg) | Adrienne of Oxford | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Unmodified, 600x746. Chain with pendant coiled on blue cloth: a seller-style flat-lay. |
 | `earrings-pair.jpg` | [Gold Jhumka, dogra culture, Jammu](https://commons.wikimedia.org/wiki/File:Gold_Jhumka,_dogra_culture,_Jammu.jpg) | SpeakingArch | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Unmodified, 1200x905. Pair of jhumkas on a light background. `earring-single.jpg` is a crop of the left earring (derivative, same licence). |
+| `earrings-silver.jpg` | [Silver Dogri Jhumka with glass, possibly late 19th-early 20th century, Bilaspur](https://commons.wikimedia.org/wiki/File:Silver_Dogri_Jhumka_with_glass,_possibly_late_19th-early_20th_century,_Bilaspur.jpg) | SpeakingArch | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Unmodified, 774x813. Pair of silver jhumkas on black. The demo shop uses a crop of the left earring (derivative, same licence). |
 | `earrings-card.jpg` | [Black Jhumka Earrings](https://commons.wikimedia.org/wiki/File:Black_Jhumka_Earrings.jpg) | Divya Parhiban | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Unmodified, 1440x1440. Pair of jhumkas on a shop card: a seller-style photo. |
 
 Try-on outputs made from CC BY-SA inputs are derivatives of them and must

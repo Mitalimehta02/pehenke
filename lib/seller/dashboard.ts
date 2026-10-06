@@ -6,11 +6,12 @@ import type { PrismaClient } from "../generated/prisma/client";
  * never appear in a real seller's funnel.
  */
 export async function sellerDashboard(prisma: PrismaClient, sellerId: string) {
-  const [garments, pending, recent] = await Promise.all([
+  const [garments, accessories, pending, recent] = await Promise.all([
     prisma.garment.findMany({ where: { sellerId }, orderBy: { createdAt: "desc" } }),
+    prisma.accessory.findMany({ where: { sellerId }, orderBy: { createdAt: "desc" } }),
     prisma.order.findMany({
       where: { sellerId, cardStatus: "pending_seller" },
-      include: { garment: true, tryOn: true },
+      include: { garment: true, tryOn: true, look: true, seller: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.order.findMany({
@@ -20,7 +21,7 @@ export async function sellerDashboard(prisma: PrismaClient, sellerId: string) {
       take: 30,
     }),
   ]);
-  return { garments, pending, recent, funnel: await funnel(prisma, sellerId), units: await unitStats(prisma, sellerId) };
+  return { garments, accessories, pending, recent, funnel: await funnel(prisma, sellerId), units: await unitStats(prisma, sellerId) };
 }
 
 export type Dashboard = Awaited<ReturnType<typeof sellerDashboard>>;

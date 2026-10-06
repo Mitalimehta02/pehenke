@@ -614,3 +614,65 @@
   flex: 1;
   min-width: 0;
 }
+
+/* ---------- complete the look ---------- */
+
+.lookBox {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.lookCloseup {
+  flex: none;
+  width: 128px;
+  border-radius: 10px;
+  align-self: flex-start;
+}
+
+.lookLists {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+}
+
+.lookLists ul {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+}
+
+.lookHead {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--plum-2);
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.cropWindow {
+  flex: none;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 2px solid var(--marigold);
+  background: #fff;
+}
+
+.cropWindow img {
+  display: block;
+  max-width: none;
+}

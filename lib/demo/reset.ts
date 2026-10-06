@@ -30,5 +30,10 @@ export async function resetDemo(app: App, sellerId: string) {
   ]);
   await app.blobs.delete(keys.filter((k) => !stillUsed.has(k)));
 
+  // Jewellery added during the demo (seeded items always have a credit).
+  const jewellery = await prisma.accessory.findMany({ where: { sellerId, credit: { equals: Prisma.DbNull } } });
+  await prisma.accessory.deleteMany({ where: { id: { in: jewellery.map((a) => a.id) } } });
+  await app.blobs.delete(jewellery.flatMap((a) => [a.photoKey, a.originalKey]).filter((k): k is string => !!k));
+
   return { chats: chats.count, orders: orders.count, photos: photos.photos, renders: photos.renders, garments: added.length };
 }

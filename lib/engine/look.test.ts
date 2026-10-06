@@ -179,7 +179,8 @@ describe("choosing a look is free; rendering happens only on 'Show me'", () => {
     for (let i = 0; i < a.data.length; i += 3) {
       const y = (i / 3 / w) | 0;
       const d = Math.max(Math.abs(a.data[i] - b[i]), Math.abs(a.data[i + 1] - b[i + 1]), Math.abs(a.data[i + 2] - b[i + 2]));
-      if (d > 40) y > 600 ? below++ : head++;
+      if (d > 40 && y > 600) below++;
+      else if (d > 40) head++;
     }
     expect(head).toBeGreaterThan(300);
     expect(below).toBe(0);

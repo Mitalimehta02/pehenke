@@ -1,4 +1,4 @@
-// npm run db:seed  -> idempotent demo data: one demo seller, garments, two sample photos.
+// npm run db:seed  -> idempotent demo data: one demo seller, garments, jewellery, two sample photos.
 // Images come from spike-assets/ (gitignored, on the developer's machine); bytes are stored
 // in the database (Blob), so the deployed app needs no local files. Credits come from
 // spike-assets/SOURCES.md. No YouCam units are spent here.
@@ -23,6 +23,14 @@ const GARMENTS: Array<{ file: string; label: string; category: Category; photoTy
   { file: "lehenga-worn.jpg", label: "Sage and pink lehenga with dupatta", category: "full_body", photoType: "worn", length: "floor", priceInr: 8999, includesBlouse: true },
   { file: "lehenga-shop-mannequin.jpg", label: "Red velvet bridal lehenga", category: "full_body", photoType: "mannequin", length: "floor", priceInr: 6499, includesBlouse: true },
   { file: "kurti-green-worn.jpg", label: "Green printed kurti", category: "upper_body", photoType: "worn", length: "knee", priceInr: 899 },
+];
+
+// Jewellery for "complete the look". Earring photos are pairs: the photo gate suggests a crop to
+// one earring, which is confirmed here (checked by eye on these two photos, 2026-10-06).
+const ACCESSORIES: Array<{ file: string; type: "earring" | "necklace"; label: string; priceInr: number }> = [
+  { file: "earrings-pair.jpg", type: "earring", label: "Gold jhumka with ruby drops", priceInr: 450 },
+  { file: "earrings-silver.jpg", type: "earring", label: "Silver filigree jhumka", priceInr: 650 },
+  { file: "necklace-ushape.jpg", type: "necklace", label: "Ruby collar necklace", priceInr: 1850 },
 ];
 
 const SAMPLES = [
@@ -75,6 +83,23 @@ async function main() {
       if (err instanceof DuplicatePhotoError) console.log(`garment ${g.label}: already seeded`);
       else throw err;
     }
+  }
+
+  for (const a of ACCESSORIES) {
+    const c = credit.get(a.file);
+    if (!c) throw new Error(`${a.file} has no SOURCES.md entry: refusing to seed an image without a credit`);
+    if (await prisma.accessory.findFirst({ where: { sellerId: seller.id, label: a.label } })) {
+      console.log(`jewellery ${a.label}: already seeded`);
+      continue;
+    }
+    let created = await app.accessories.add(seller.id, { type: a.type, label: a.label, priceInr: a.priceInr, bytes: readFileSync(path.join(ASSETS, "jewellery", a.file)), credit: c });
+    if (created.gateStatus === "needs_review" && created.cropSuggestion) {
+      created = await app.accessories.confirmCrop(seller.id, created.id);
+      // CC BY-SA: say that the image was changed
+      await prisma.accessory.update({ where: { id: created.id }, data: { credit: { ...c, modified: "Cropped to one earring" } } });
+    }
+    console.log(`jewellery ${a.label}: gate ${created.gateStatus} (${created.gateBy})${created.gateAdvice ? ` - ${created.gateAdvice}` : ""}`);
+    if (created.gateStatus !== "approved") throw new Error(`${a.file} did not pass the jewellery photo gate`);
   }
 
   for (const s of SAMPLES) {

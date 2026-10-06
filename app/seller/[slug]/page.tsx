@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { sellerCopy } from "@/lib/engine/sellerCopy";
-import { orderRef } from "@/lib/orders/cardData";
+import { buildOrderCard, lookItemLabel, orderRef, type LookItem } from "@/lib/orders/cardData";
 import { serverEnv } from "@/lib/env";
 import { sellerDashboard, storageStats } from "@/lib/seller/dashboard";
 import { getApp } from "@/lib/server/app";
@@ -9,7 +9,7 @@ import { isSeller } from "@/lib/server/auth";
 import { ShareBox } from "@/app/_components/ShareBox";
 import { links } from "@/lib/links";
 import { formatPhone } from "@/lib/orders/phone";
-import { AddGarment, AutoRefresh, CardActions, GarmentActions, GarmentShare, OrderDecision, OutcomeSelect, ResetDemo } from "./SellerClient";
+import { AccessoryActions, AddGarment, AddJewellery, AutoRefresh, CardActions, GarmentActions, GarmentShare, OrderDecision, OutcomeSelect, ResetDemo } from "./SellerClient";
 import styles from "./seller.module.css";
 
 export const dynamic = "force-dynamic";
@@ -73,19 +73,25 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
         {!d.pending.length && <p className={styles.empty}>No orders waiting. New orders appear here automatically.</p>}
         {d.pending.map((o) => {
           const pc = (o.pixelSummary as { pixelChecks?: { regionUnchanged?: boolean | null; changedPct?: number | null; length?: { determined: boolean; hemPos: number; expected: string } | null } } | null)?.pixelChecks;
+          // with "complete the look": the card shows the look, so the seller checks the look and its close-up
+          const card = buildOrderCard(o);
+          const lookItems = (Array.isArray(o.lookItems) ? o.lookItems : []) as unknown as LookItem[];
+          const fromPhotos = lookItems.filter((i) => i.fromSellerPhoto);
+          const stylingOnly = lookItems.filter((i) => !i.fromSellerPhoto);
+          const neck = sellerCopy.neckAnswer(o.lookNeckBare);
           return (
             <article key={o.id} className={styles.order}>
               <div className={styles.orderTop}>
-                {o.tryOn?.outputKey ? (
+                {card.imageKey ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img className={styles.orderImg} src={media(o.tryOn.outputKey)} alt="Buyer's try-on" />
+                  <img className={styles.orderImg} src={media(card.imageKey)} alt={card.closeupKey ? "Buyer's complete look, full length" : "Buyer's try-on"} />
                 ) : (
                   <div className={`${styles.orderImg} ${styles.noImg}`}>Photo deleted</div>
                 )}
                 <div className={styles.orderInfo}>
                   <p className={styles.orderTitle}>{o.garment.label}</p>
                   <p className={styles.meta}>
-                    {inr(o.garment.priceInr)} · {orderRef(o.id)} · {ago(o.createdAt)}
+                    {card.totalInr != null ? `Total ${inr(card.totalInr)} (outfit ${inr(o.garment.priceInr)})` : inr(o.garment.priceInr)} · {orderRef(o.id)} · {ago(o.createdAt)}
                   </p>
                   <ul className={styles.checks}>
                     <li className={pc?.regionUnchanged ? styles.bad : styles.good}>
@@ -100,7 +106,45 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
                   </ul>
                 </div>
               </div>
-              {o.disclosureText && <p className={styles.disclosure}>Card will say: “{o.disclosureText}”</p>}
+              {card.closeupKey && (
+                <div className={styles.lookBox}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className={styles.lookCloseup} src={media(card.closeupKey)} alt="Close-up of the look" />
+                  <div className={styles.lookLists}>
+                    {fromPhotos.length > 0 && (
+                      <>
+                        <p className={styles.lookHead}>{sellerCopy.lookFromYourPhotos}</p>
+                        <ul>
+                          {fromPhotos.map((i) => (
+                            <li key={i.kind}>
+                              {lookItemLabel(i)}
+                              {i.priceInr != null ? ` · ${inr(i.priceInr)}` : ""} <span className={styles.meta}>({i.ordered ? sellerCopy.lookOrdered : sellerCopy.lookShownOnly})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                    {stylingOnly.length > 0 && (
+                      <>
+                        <p className={styles.lookHead}>{sellerCopy.lookStyling}</p>
+                        <ul>
+                          {stylingOnly.map((i) => (
+                            <li key={i.kind}>
+                              {i.hex && <span className={styles.swatch} style={{ background: i.hex }} aria-hidden />}
+                              {lookItemLabel(i)}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+              {neck && <p className={styles.hint}>{neck}</p>}
+              {card.closeupKey && <p className={styles.hint}>Jewellery is small in the full-length picture: check it in the close-up. It is drawn from your own photo of the item.</p>}
+              {(o.disclosureText || card.styling.length > 0) && (
+                <p className={styles.disclosure}>Card will say: “{[card.styling.length ? `Styling suggestion, not included: ${card.styling.join(", ")}.` : "", o.disclosureText ?? ""].filter(Boolean).join(" ")}”</p>
+              )}
               <p className={styles.hint}>Check the image: is it the right outfit, with nothing extra the buyer didn&apos;t order?</p>
               <OrderDecision slug={slug} sellerKey={key} orderId={o.id} />
             </article>
@@ -168,6 +212,43 @@ export default async function SellerPage({ params, searchParams }: PageProps<"/s
                     <GarmentShare url={links.chat(app.baseUrl, slug, g.id)} waText={sellerCopy.waGarment(g.label, g.priceInr, links.chat(app.baseUrl, slug, g.id))} />
                   )}
                   <GarmentActions slug={slug} sellerKey={key} garmentId={g.id} active={g.active} needsChecklist={g.gateStatus === "needs_review" && !g.sellerConfirmed} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <section className={styles.section}>
+        <h2>Your jewellery</h2>
+        <p className={styles.hint}>Buyers can add these to a try-on with &quot;Complete the look&quot;, and to their order.</p>
+        <AddJewellery slug={slug} sellerKey={key} />
+        <ul className={styles.garments}>
+          {d.accessories.map((a) => {
+            const crop = a.gateStatus === "needs_review" ? (a.cropSuggestion as { left: number; top: number; width: number; height: number } | null) : null;
+            const usable = a.gateStatus === "approved";
+            const W = 72;
+            return (
+              <li key={a.id} className={styles.garment}>
+                {crop ? (
+                  // the suggested one-earring crop, shown by positioning the full photo inside a window
+                  <div className={styles.cropWindow} style={{ width: W, height: Math.round((W * crop.height) / crop.width) }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={media(a.photoKey)} alt="Suggested crop: one earring" style={{ width: (W * a.photoW) / crop.width, marginLeft: (-W * crop.left) / crop.width, marginTop: (-W * crop.top) / crop.width }} />
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className={styles.garmentImg} src={media(a.photoKey)} alt="" style={{ objectFit: "contain", background: "#fff" }} />
+                )}
+                <div className={styles.garmentInfo}>
+                  <p className={styles.garmentTitle}>{a.label}</p>
+                  <p className={styles.meta}>{[inr(a.priceInr), sellerCopy.accessoryTypes[a.type]].filter(Boolean).join(" · ")}</p>
+                  <span className={`${styles.badge} ${styles[`badge_${a.gateStatus === "needs_review" ? "pending" : a.gateStatus}`]}`}>
+                    <span aria-hidden>{usable ? "✓" : a.gateStatus === "rejected" ? "✕" : "!"}</span>
+                    {sellerCopy.accessoryStatus[a.gateStatus]}
+                  </span>
+                  {!usable && a.gateAdvice && <p className={styles.advice}>{a.gateAdvice}</p>}
+                  <AccessoryActions slug={slug} sellerKey={key} accessoryId={a.id} active={a.active} needsCrop={!!crop} usable={usable} />
                 </div>
               </li>
             );

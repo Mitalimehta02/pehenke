@@ -65,7 +65,13 @@ async function mask(bytes: Uint8Array): Promise<Mask> {
   };
   const raw = new Uint8Array(w * h);
   let n = 0;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (far(at(x, y))) (raw[y * w + x] = 1), n++;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!far(at(x, y))) continue;
+      raw[y * w + x] = 1;
+      n++;
+    }
+  }
   // close small gaps (thin chains, stones) so one item is one blob
   const fg = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
@@ -104,7 +110,10 @@ function blobs({ w, h, fg }: Mask): Blob[] {
       b.y0 = Math.min(b.y0, y);
       b.y1 = Math.max(b.y1, y);
       for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) {
-        if (j >= 0 && fg[j] && !seen[j]) (seen[j] = 1), stack.push(j);
+        if (j >= 0 && fg[j] && !seen[j]) {
+          seen[j] = 1;
+          stack.push(j);
+        }
       }
     }
     out.push(b);
@@ -147,7 +156,10 @@ export async function checkAccessoryPhoto(p: { bytes: Uint8Array; type: "earring
           for (let x = Math.ceil(acx); x <= Math.floor(bcx); x++) {
             let n = 0;
             for (let y = 0; y < m.h; y++) n += m.fg[y * m.w + x];
-            if (n < fewest) (fewest = n), (cut = x);
+            if (n < fewest) {
+              fewest = n;
+              cut = x;
+            }
           }
           const k = W / m.w;
           const padX = Math.round((a.x1 - a.x0 + 1) * 0.18);

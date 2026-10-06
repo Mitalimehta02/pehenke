@@ -18,6 +18,8 @@ export interface FakeYouCamOptions {
   lose?: boolean;
   /** look features ("makeup-vto", "2d-vto/necklace", "2d-vto/earring") whose tasks end in a task error */
   failFeatures?: string[];
+  /** dev only: draw a look step from the real product photo / lip colour (else the synthetic patch) */
+  renderLookFrom?: (feature: string, crop: Uint8Array, ref: Uint8Array | null, body: Record<string, unknown>) => Promise<Buffer | null>;
   /** dev only: return a real render for these inputs if known (else the synthetic one) */
   renderFrom?: (src: Uint8Array, ref: Uint8Array) => Promise<Buffer | null>;
 }
@@ -26,7 +28,7 @@ export class FakeYouCam {
   readonly starts: Array<{ taskId: string; body: Record<string, unknown> }> = [];
   readonly deletes: string[] = [];
   private files = new Map<string, Uint8Array>();
-  private tasks = new Map<string, { src: string; ref: string; polls: number; feature: string }>();
+  private tasks = new Map<string, { src: string; ref: string; polls: number; feature: string; body?: Record<string, unknown> }>();
   private n = 0;
 
   constructor(public opts: FakeYouCamOptions = {}) {}
@@ -50,7 +52,9 @@ export class FakeYouCam {
     if (url.host === "cdn.fake") {
       const task = this.tasks.get(url.pathname.slice(1).replace(/\.(jpg|png)$/, ""))!;
       if (task.feature !== "cloth-v3") {
-        return new Response(new Uint8Array(await this.renderLook(task.feature, this.files.get(task.src)!)), { status: 200, headers: { "content-type": "image/png" } });
+        const crop = this.files.get(task.src)!;
+        const drawn = await this.opts.renderLookFrom?.(task.feature, crop, this.files.get(task.ref) ?? null, task.body ?? {});
+        return new Response(new Uint8Array(drawn ?? (await this.renderLook(task.feature, crop))), { status: 200, headers: { "content-type": "image/png" } });
       }
       const real = await this.opts.renderFrom?.(this.files.get(task.src)!, this.files.get(task.ref)!);
       return new Response(new Uint8Array(real ?? (await this.render(this.files.get(task.src)!))), { status: 200, headers: { "content-type": "image/jpeg" } });
@@ -71,7 +75,7 @@ export class FakeYouCam {
       const params = body.object_infos?.[0]?.parameter ?? {};
       if (Object.values(params).some((v) => v === null)) return this.json(400, { status: 400, error_code: "InvalidParameters" });
       const taskId = `task-${++this.n}`;
-      this.tasks.set(taskId, { src: body.src_file_id, ref: body.ref_file_ids?.[0] ?? "", polls: 0, feature: look[2] });
+      this.tasks.set(taskId, { src: body.src_file_id, ref: body.ref_file_ids?.[0] ?? "", polls: 0, feature: look[2], body });
       this.starts.push({ taskId, body: { ...body, feature: look[2] } });
       return this.json(200, { status: 200, data: { task_id: taskId } });
     }

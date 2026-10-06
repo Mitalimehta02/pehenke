@@ -7,7 +7,7 @@ import { resizeForUpload } from "@/lib/client/resizeImage";
 import type { OrderOutcome } from "@/lib/generated/prisma/enums";
 import { WaIcon } from "@/app/_components/ShareBox";
 import { waLink } from "@/lib/links";
-import { confirmChecklist, decideOrder, markCardSent, markDispatched, resetDemoData, setGarmentActive, setOutcome } from "./actions";
+import { confirmAccessoryCrop, confirmChecklist, decideOrder, markCardSent, markDispatched, removeAccessory, resetDemoData, setAccessoryActive, setGarmentActive, setOutcome } from "./actions";
 import styles from "./seller.module.css";
 
 type Props = { slug: string; sellerKey: string | null };
@@ -318,5 +318,134 @@ export function CardActions({
         </button>
       )}
     </div>
+  );
+}
+
+/** "Add jewellery" for complete-the-look: earrings or a necklace, with the photo rule shown up front. */
+export function AddJewellery({ slug, sellerKey }: Props) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: "ok" | "warn" | "bad"; text: string } | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [type, setType] = useState<"earring" | "necklace">("earring");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const file = form.get("photo");
+    if (file instanceof File && file.size) form.set("photo", await resizeForUpload(file, 2048), "jewellery.jpg");
+    if (sellerKey) form.set("key", sellerKey);
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/seller/${slug}/accessories`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't add the item.");
+      setMsg(
+        data.gateStatus === "approved"
+          ? { kind: "ok", text: "Added. The photo passed the check and buyers can now add it to a look." }
+          : data.gateStatus === "needs_review"
+            ? { kind: "warn", text: `Added, one step left. ${data.gateAdvice ?? ""}` }
+            : { kind: "bad", text: `This photo can't be used. ${data.gateAdvice ?? ""}` },
+      );
+      formRef.current?.reset();
+      setPreview(null);
+      router.refresh();
+    } catch (err) {
+      setMsg({ kind: "bad", text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <>
+        <button className={styles.addButton} onClick={() => setOpen(true)}>
+          + Add jewellery
+        </button>
+        {msg && <p className={`${styles.msg} ${styles[`msg_${msg.kind}`]}`}>{msg.text}</p>}
+      </>
+    );
+  }
+  return (
+    <form ref={formRef} className={styles.addForm} onSubmit={submit}>
+      <label className={styles.label}>
+        What is it?
+        <select className={styles.select} name="type" value={type} onChange={(e) => setType(e.target.value as "earring" | "necklace")} style={{ width: "100%" }}>
+          <option value="earring">Earrings</option>
+          <option value="necklace">Necklace</option>
+        </select>
+      </label>
+      <p className={styles.hint}>{sellerCopy.accessoryBest[type]} It is drawn on the buyer exactly as it looks in your photo.</p>
+      <label className={styles.photoPick}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {preview ? <img src={preview} alt="" /> : <span>Tap to add a photo</span>}
+        <input
+          name="photo"
+          type="file"
+          accept="image/*"
+          required
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            setPreview(f ? URL.createObjectURL(f) : null);
+          }}
+        />
+      </label>
+      <div className={styles.twoCol}>
+        <label className={styles.label}>
+          Name
+          <input className={styles.input} name="label" required maxLength={80} placeholder={type === "earring" ? "e.g. Gold jhumka" : "e.g. Temple necklace"} />
+        </label>
+        <label className={styles.label}>
+          Price (₹, optional)
+          <input className={styles.input} name="priceInr" inputMode="numeric" placeholder="450" />
+        </label>
+      </div>
+      <div className={styles.row}>
+        <button type="button" className={styles.secondary} onClick={() => setOpen(false)} disabled={busy}>
+          Cancel
+        </button>
+        <button className={styles.primary} disabled={busy}>
+          {busy ? "Checking photo…" : "Add jewellery"}
+        </button>
+      </div>
+      {msg && <p className={`${styles.msg} ${styles[`msg_${msg.kind}`]}`}>{msg.text}</p>}
+    </form>
+  );
+}
+
+/** Jewellery item actions: confirm the suggested one-earring crop, hide/show, remove. */
+export function AccessoryActions({ slug, sellerKey, accessoryId, active, needsCrop, usable }: Props & { accessoryId: string; active: boolean; needsCrop: boolean; usable: boolean }) {
+  const [pending, start] = useTransition();
+  return (
+    <>
+      {needsCrop && (
+        <div className={styles.row}>
+          <button className={styles.primary} disabled={pending} onClick={() => start(() => confirmAccessoryCrop(slug, sellerKey, accessoryId))}>
+            {pending ? "Saving…" : "Use this crop"}
+          </button>
+        </div>
+      )}
+      <div className={styles.shareRow}>
+        {usable && (
+          <button className={styles.link} disabled={pending} onClick={() => start(() => setAccessoryActive(slug, sellerKey, accessoryId, !active))}>
+            {active ? "Hide from buyers" : "Show to buyers"}
+          </button>
+        )}
+        <button
+          className={styles.link}
+          disabled={pending}
+          onClick={() => {
+            if (confirm("Remove this jewellery item?")) start(() => removeAccessory(slug, sellerKey, accessoryId));
+          }}
+        >
+          Remove
+        </button>
+      </div>
+    </>
   );
 }

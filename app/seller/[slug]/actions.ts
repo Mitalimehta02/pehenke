@@ -59,3 +59,21 @@ export async function markDispatched(slug: string, key: string | null, orderId: 
   await app.orders.markDispatched(seller.id, orderId);
   refresh();
 }
+
+export async function confirmAccessoryCrop(slug: string, key: string | null, accessoryId: string) {
+  const { app, seller } = await sellerFor(slug, key);
+  await app.accessories.confirmCrop(seller.id, accessoryId);
+  refresh();
+}
+
+export async function setAccessoryActive(slug: string, key: string | null, accessoryId: string, active: boolean) {
+  const { app, seller } = await sellerFor(slug, key);
+  await app.accessories.setActive(seller.id, accessoryId, active);
+  refresh();
+}
+
+export async function removeAccessory(slug: string, key: string | null, accessoryId: string) {
+  const { app, seller } = await sellerFor(slug, key);
+  await app.accessories.remove(seller.id, accessoryId);
+  refresh();
+}

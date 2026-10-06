@@ -12,6 +12,7 @@ const CASES: Array<[string, "earring" | "necklace", string]> = [
   [path.join(INPUTS, "earring-single.jpg"), "earring", "approved"],
   [path.join(J, "earrings-pair.jpg"), "earring", "needs_review (pair, crop offered)"],
   [path.join(J, "earrings-card.jpg"), "earring", "rejected or pair"],
+  [path.join(J, "earrings-silver.jpg"), "earring", "needs_review (pair, crop offered)"],
 ];
 
 async function main() {

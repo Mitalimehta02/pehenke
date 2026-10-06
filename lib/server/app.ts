@@ -15,8 +15,8 @@ async function youcamFactory(): Promise<(logger: CallLogger) => YouCamClient> {
   if (process.env.YOUCAM_FAKE === "1" && process.env.NODE_ENV !== "production") {
     // dev-only modules, loaded lazily so they never reach the production server bundle
     const { FakeYouCam } = await import("../testing/fakeYoucam");
-    const { spikeRenderLookup } = await import("../testing/devRenders");
-    g.pehenkeFake ??= new FakeYouCam({ runningPolls: 3, renderFrom: await spikeRenderLookup() });
+    const { spikeRenderLookup, devLookRender } = await import("../testing/devRenders");
+    g.pehenkeFake ??= new FakeYouCam({ runningPolls: 3, renderFrom: await spikeRenderLookup(), renderLookFrom: devLookRender });
     console.warn("[dev] YOUCAM_FAKE=1: try-ons use the fake renderer, no units spent");
     return (logger) => {
       const c = g.pehenkeFake!.client(logger);

@@ -13,18 +13,22 @@ interface Credit {
   author: string;
   licence: string;
   licenceUrl: string | null;
+  /** how the image was changed, if it was (CC BY-SA asks for this) */
+  modified?: string;
 }
 
 /** Every seeded demo image with its source, author and licence (copied from spike-assets/SOURCES.md at seed time). */
 export default async function CreditsPage() {
   const { prisma } = await getApp();
-  const [garments, samples] = await Promise.all([
+  const [garments, samples, accessories] = await Promise.all([
     prisma.garment.findMany({ where: { credit: { not: Prisma.DbNull }, seller: { isDemo: true } }, orderBy: { createdAt: "asc" }, select: { id: true, label: true, photoKey: true, credit: true } }),
     prisma.buyerPhoto.findMany({ where: { isSample: true }, orderBy: { createdAt: "asc" }, select: { id: true, sampleName: true, blobKey: true, credit: true } }),
+    prisma.accessory.findMany({ where: { credit: { not: Prisma.DbNull }, seller: { isDemo: true } }, orderBy: { createdAt: "asc" }, select: { id: true, label: true, photoKey: true, credit: true } }),
   ]);
   const rows = [
     ...samples.map((s) => ({ id: s.id, what: s.sampleName ?? "Sample photo", key: s.blobKey, credit: s.credit as Credit | null })),
     ...garments.map((g) => ({ id: g.id, what: g.label, key: g.photoKey, credit: g.credit as Credit | null })),
+    ...accessories.map((a) => ({ id: a.id, what: a.label, key: a.photoKey, credit: a.credit as Credit | null })),
   ].filter((r) => r.credit);
 
   return (
@@ -34,7 +38,7 @@ export default async function CreditsPage() {
       </Link>
       <h1>Image credits</h1>
       <p className={styles.lead}>
-        The demo shop and sample models use openly licensed photos from Wikimedia Commons. Try-on previews made from these photos are derivatives and carry the same licence.
+        The demo shop (outfits and jewellery) and sample models use openly licensed photos from Wikimedia Commons. Try-on previews and looks made from these photos are derivatives and carry the same licence.
       </p>
       <ul className={styles.credits}>
         {rows.map((r) => (
@@ -49,6 +53,7 @@ export default async function CreditsPage() {
                 </a>
               </p>
               <p>By {r.credit!.author || "unknown"}</p>
+              {r.credit!.modified && <p>Changed: {r.credit!.modified}</p>}
               <p>
                 Licence:{" "}
                 {r.credit!.licenceUrl ? (
