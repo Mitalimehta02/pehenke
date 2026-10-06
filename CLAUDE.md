@@ -114,6 +114,14 @@ spec). If something isn't in the spec, say so instead of guessing.
   it already has. Re-rendering also can't "fix" a bad output; change an
   input instead (e.g. ask for a full-body photo).
 
+- Verified live (complete-the-look spike, SPIKE.md): `makeup-vto`, `2d-vto/necklace` and
+  `2d-vto/earring` cost 1 unit per success; errors and 400s were not charged. They fail on a
+  full-body image and work on a head-and-shoulders crop; output is pixel-identical outside
+  the effect. Makeup smooths skin at 50 by default: always send `skin_smooth` strength 0.
+  Omit optional jewellery fields rather than sending `null` (400, although the docs' sample
+  does). Jewellery photos are used as given: necklace in its worn U shape, one earring.
+  The feature itself is not built yet.
+
 ## Skin tone: expensive, call once per buyer
 
 Skin tone analysis costs 20 units, 10x a try-on. Call it **at most once per

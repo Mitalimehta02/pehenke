@@ -151,12 +151,14 @@ function body(c: Call, srcId: string, refId: string | undefined, lipHex: string)
       ],
     };
   }
+  // Verified live: the optional anchor / location / scale fields must be omitted. Sending null
+  // (as the docs' own sample request does) is rejected with 400 InvalidParameters, uncharged.
   if (c.feature === NECKLACE) {
     return {
       src_file_id: srcId,
       ref_file_ids: [refId],
       source_info: { name: srcId },
-      object_infos: [{ name: refId, parameter: { necklace_need_remove_background: true, necklace_anchor_point: null, necklace_wearing_location: null, necklace_shadow_intensity: 0.5, necklace_ambient_light_intensity: 0.5 } }],
+      object_infos: [{ name: refId, parameter: { necklace_need_remove_background: true, necklace_shadow_intensity: 0.5, necklace_ambient_light_intensity: 0.5 } }],
     };
   }
   return {
@@ -166,7 +168,7 @@ function body(c: Call, srcId: string, refId: string | undefined, lipHex: string)
     object_infos: [
       {
         name: refId,
-        parameter: { earring_need_remove_background: true, earring_anchor_point: null, earring_wearing_location: null, earring_scale: null, earring_is_right_ear: true, earring_occluded_type: 0, earring_shadow_intensity: 0.5, earring_ambient_light_intensity: 0.5 },
+        parameter: { earring_need_remove_background: true, earring_is_right_ear: true, earring_occluded_type: 0, earring_shadow_intensity: 0.5, earring_ambient_light_intensity: 0.5 },
       },
     ],
   };

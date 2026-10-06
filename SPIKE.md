@@ -163,3 +163,44 @@ Say to the seller: *"Send one photo of the item on a mannequin or hanger against
 - **Audit provider:** choose one for the pilot (Gemini paid tier, or another vision model), then re-audit all 22 renders to measure catch rate against my visual review.
 - **Leaked body shape:** the audit reports it but it doesn't affect the verdict. Should it?
 - **Garment length:** should the expected hem length be a required seller input, with the pixel check dropped in favour of the audit?
+
+## Complete-the-look spike (lipstick, necklace, earrings)
+
+Run 2026-10-06 with `npm run spike:look`. 8 units spent (balance 968 -> 960), read
+before and after every call. Base image: the cached demo render of Sample model B in
+the ivory saree (1280x1600); "crop" = its head-and-shoulders box (480x600) upscaled x2.
+
+| Call | Feature | Buyer image | Product | Result | Units |
+|---|---|---|---|---|---|
+| L1 | makeup-vto | full-body output | hex, matte | error `error_no_face` | 0 |
+| L2 | makeup-vto | crop | hex, matte | success | 1 |
+| L3 | makeup-vto | chest-up photo | hex, matte | success | 1 |
+| N1 | 2d-vto/necklace | full-body output | U-shape photo | error "face alignment failed" | 0 |
+| N2 | 2d-vto/necklace | crop | U-shape photo | success | 1 |
+| N3 | 2d-vto/necklace | crop | coiled flat-lay photo | success, but drawn in its coiled shape (unusable) | 1 |
+| C1 | makeup-vto | N2's result | hex, matte | success (necklace + lipstick) | 1 |
+| E1 | 2d-vto/earring | front-facing crop | one earring | success, both ears | 1 |
+| E2 | 2d-vto/earring | side-turned close-up | one earring | success | 1 |
+| E3 | 2d-vto/earring | side-turned close-up | pair on a shop card | success, but a tiny fragment (unusable) | 1 |
+
+Findings:
+- **Failed calls were not charged**, for all three features: task errors (L1, N1) and
+  request rejections (seven 400s) cost 0.
+- **None works on the full-body image as-is; lipstick, necklace and earrings all work on
+  a head-and-shoulders crop of our own output.** The docs say earrings need a side view
+  of one ear; live, a front-facing crop got an earring on both ears for 1 unit.
+- **Results are pixel-identical to the input outside the effect** (PNG, same size), so a
+  crop result can be pasted back into the full-body image. With smoothing strength 0,
+  nothing outside the lips changed.
+- **Jewellery uses the seller's photo as given; it is not reshaped.** A necklace must be
+  photographed in its worn U shape; a coiled flat-lay is drawn coiled. An earring photo
+  must show one earring; from a pair on a card the engine picked a fragment.
+- The optional `*_anchor_point`, `*_wearing_location` and `earring_scale` fields must be
+  omitted: `null` (as in the docs' own sample request) is a 400 InvalidParameters.
+- Detail is limited by the full-body frame: the face is about 130 px wide and the
+  necklace about 100 px at original size. It reads as soft, not as artificial.
+- Lip shades come from `lib/look/lipShade.ts` (garment colours -> two shades, free).
+  Matte at intensity 70 rendered a bolder red than the proposed hex suggests.
+
+Not tested: a necklace on a bust stand, hair covering the ears, earring size (`earring_scale`),
+a real phone photo.
