@@ -143,7 +143,8 @@ export async function pasteChanged(base: Uint8Array, box: CropBox, before: Uint8
     if (!changed) return { full: await baseRaw().png().toBuffer(), changedShare: 0 };
 
     // grow the mask slightly and soften its edge (in enlarged-crop pixels), then reduce patch and mask together
-    const soft = await sharp(mask, { raw: { width: w, height: h, channels: 1 } }).blur(1.6).linear(3, 0).blur(0.8).raw().toBuffer();
+    const soft = await sharp(mask, { raw: { width: w, height: h, channels: 1 } }).blur(1.6).linear(3, 0).blur(0.8).extractChannel(0).raw().toBuffer();
+    if (soft.length !== w * h) throw new Error("paste mask has an unexpected size");
     const rgba = Buffer.alloc(w * h * 4);
     for (let i = 0; i < w * h; i++) {
       rgba[i * 4] = B[i * 3];
@@ -151,7 +152,10 @@ export async function pasteChanged(base: Uint8Array, box: CropBox, before: Uint8
       rgba[i * 4 + 2] = B[i * 3 + 2];
       rgba[i * 4 + 3] = soft[i];
     }
-    const patch = await sharp(rgba, { raw: { width: w, height: h, channels: 4 } }).resize(box.width, box.height, { kernel: "lanczos3", fit: "fill" }).png().toBuffer();
+    const small = await sharp(rgba, { raw: { width: w, height: h, channels: 4 } }).resize(box.width, box.height, { kernel: "lanczos3", fit: "fill" }).raw().toBuffer();
+    // cut the faint tail of the soft edge, so nothing a few pixels away from a change is touched
+    for (let i = 3; i < small.length; i += 4) if (small[i] < 24) small[i] = 0;
+    const patch = await sharp(small, { raw: { width: box.width, height: box.height, channels: 4 } }).png().toBuffer();
     const full = await baseRaw().composite([{ input: patch, left: box.left, top: box.top }]).png().toBuffer();
     return { full, changedShare: changed / (w * h) };
   });
