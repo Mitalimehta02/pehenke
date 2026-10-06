@@ -10,7 +10,7 @@ Facts below are from Render's docs (deploys, free, node-version, health-checks p
 
 | Field | Value |
 |---|---|
-| Build command | `npm ci && npm run build:render` |
+| Build command | `npm ci && npm run build:render` (sets its own 1536 MB heap limit for the build) |
 | Start command | `npm run start` |
 | Node version | from `.node-version` (= `24`); or set env `NODE_VERSION=24` |
 | Health check path | `/api/health` |
@@ -25,8 +25,17 @@ Render keeps the previous version, which still matches the database. The first l
 build log say which variables the build environment has (names only).
 Why not migrate at server start: the new code would serve requests for a moment against the
 old schema, a failed migration would crash-loop the server, and a free instance restarts often.
-History: two releases went live with their migrations skipped (the old script only warned),
-so ordering was broken on the live site until they were applied by hand on 2026-10-06.
+History: two releases went live without their migrations (the old script only warned when it
+had no connection), so ordering was broken on the live site until they were applied by hand on
+2026-10-06. A build log from that day shows `DIRECT_URL set` at build time and the step working;
+whether the variable was missing during the earlier builds is not known.
+
+**Build memory.** `NODE_OPTIONS=--max-old-space-size=384` is right for the running server
+(512 MB instance) but Render applies service variables to the build too, and a clean build's
+type-check needs between 384 and 512 MB (seen live 2026-10-06: "JavaScript heap out of memory"
+in "Running TypeScript", build failed, previous version stayed live). `build:render` therefore
+sets its own limit for `next build`. If a build fails this way again, raise that number in
+package.json; don't raise the server's.
 `SKIP_BUILD_MIGRATIONS=1` switches the build step off on purpose (run `npm run db:migrate`
 first). Migrations are forward-only; a migration that succeeds while the rest of the build
 fails leaves the previous deploy running on the new schema, so keep migrations additive
