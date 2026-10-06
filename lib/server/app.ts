@@ -35,7 +35,7 @@ export function getApp(): Promise<App> {
       prisma: await dbAsync(),
       youcam: await youcamFactory(),
       baseUrl: appUrl(),
-      caps: { youcamDailyUnits: env.YOUCAM_DAILY_UNIT_CAP, buyerDailyRenders: env.BUYER_DAILY_RENDERS, geminiDailyLimit: env.GEMINI_DAILY_LIMIT },
+      caps: { youcamDailyUnits: env.YOUCAM_DAILY_UNIT_CAP, buyerDailyRenders: env.BUYER_DAILY_RENDERS, buyerDailyLooks: env.BUYER_DAILY_LOOKS, geminiDailyLimit: env.GEMINI_DAILY_LIMIT },
       auditor: (onRequest) => auditorFromEnv(onRequest),
     });
   })();
@@ -82,6 +82,8 @@ export function boot(): Promise<void> {
     try {
       const r = await app.tryOns.resumeAll();
       if (r.resumed || r.abandoned) console.log(`[boot] try-ons resumed: ${r.resumed}, abandoned: ${r.abandoned}`);
+      const looks = await app.looks.resumeAll();
+      if (looks) console.log(`[boot] looks resumed: ${looks}`);
     } catch (err) {
       console.error("[boot] resume failed", err);
     }

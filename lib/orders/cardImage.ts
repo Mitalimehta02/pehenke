@@ -79,8 +79,14 @@ export async function renderCardImage({ card, tryOn, garment }: CardImageInput):
     const infoW = garment ? TEXT_W - THUMB_W - THUMB_GAP : TEXT_W;
     const title = await text(card.title, { size: 46, bold: true, width: TEXT_W - 70 });
     const shop = await text(card.sellerName, { size: 30, color: C.muted, width: TEXT_W - 70 });
+    const inr = (n: number | null) => (n != null ? `₹${n.toLocaleString("en-IN")}` : "");
     const label = await text(card.garmentLabel, { size: 42, bold: true, width: infoW });
-    const meta = await text([card.priceInr != null ? `₹${card.priceInr.toLocaleString("en-IN")}` : null, `Order ${card.orderRef}`].filter(Boolean).join("  ·  "), { size: 34, width: infoW });
+    const meta = await text([card.priceInr != null ? inr(card.priceInr) : null, `Order ${card.orderRef}`].filter(Boolean).join("  ·  "), { size: 34, width: infoW });
+    // jewellery added to the order, with prices and a total; then what the image shows but the order doesn't include
+    const extras = [];
+    for (const e of card.extras) extras.push(await text(`+ ${e.label}${e.priceInr != null ? `  ·  ${inr(e.priceInr)}` : ""}`, { size: 30, width: infoW }));
+    const total = card.totalInr != null ? await text(copy.cardTotal(card.totalInr), { size: 36, bold: true, width: infoW }) : null;
+    const styling = card.styling.length ? await text(copy.cardStyling(card.styling), { size: 27, color: C.muted, width: infoW }) : null;
     const disclosure = card.disclosure ? await text(card.disclosure, { size: 27, color: C.muted, width: infoW }) : null;
     const footer = await text(copy.cardImageFooter(), { size: 24, color: C.muted });
 
@@ -110,6 +116,18 @@ export async function renderCardImage({ card, tryOn, garment }: CardImageInput):
     y += label.height + 18;
     layers.push({ input: meta.input, left: PAD, top: y });
     y += meta.height + 24;
+    for (const e of extras) {
+      layers.push({ input: e.input, left: PAD, top: y });
+      y += e.height + 14;
+    }
+    if (total) {
+      layers.push({ input: total.input, left: PAD, top: y + 4 });
+      y += total.height + 28;
+    } else if (extras.length) y += 10;
+    if (styling) {
+      layers.push({ input: styling.input, left: PAD, top: y });
+      y += styling.height + 20;
+    }
     if (disclosure) {
       layers.push({ input: disclosure.input, left: PAD, top: y });
       y += disclosure.height + 24;

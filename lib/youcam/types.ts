@@ -3,7 +3,10 @@
 // only in prose are marked optional and commented.
 
 /** Feature path segments used in /file/{feature} and /task/{feature}. */
-export type Feature = "cloth-v3" | "skin-tone-analysis";
+export type Feature = "cloth-v3" | "skin-tone-analysis" | LookFeature;
+
+/** Complete-the-look features (SPIKE.md): 1 unit per success, input must be a head-and-shoulders crop. */
+export type LookFeature = "makeup-vto" | "2d-vto/necklace" | "2d-vto/earring";
 
 /** Every successful response is wrapped like this. */
 export interface Envelope<T> {

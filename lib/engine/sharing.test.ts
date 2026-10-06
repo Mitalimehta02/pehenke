@@ -232,7 +232,7 @@ describe("family vote", () => {
     expect(decodeURIComponent(wa.href.split("text=")[1])).toBe(`What do you think, should I buy this saree? Tap to vote: https://shop.example/v/${vote.token}`);
     // still in the preview, with "Order this" active and no second "Ask family"
     expect(await state()).toBe("PREVIEW");
-    expect(buttonIds(o)).toEqual([BTN.order, BTN.tryAnother, BTN.newPhoto]);
+    expect(buttonIds(o)).toEqual([BTN.order, BTN.completeLook, BTN.tryAnother, BTN.newPhoto]);
 
     await tap(BTN.askFamily);
     expect(await db.prisma.familyVote.count()).toBe(1); // reused

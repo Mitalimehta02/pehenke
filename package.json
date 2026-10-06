@@ -17,6 +17,7 @@
     "spike:report": "tsx --conditions=react-server scripts/spike/report.ts",
     "spike:lipshades": "tsx --conditions=react-server scripts/spike/lipshades.ts",
     "spike:look": "tsx --conditions=react-server scripts/spike/look.ts",
+    "spike:gate": "tsx --conditions=react-server scripts/spike/accessory-gate.ts",
     "postinstall": "prisma generate",
     "db:seed": "tsx --conditions=react-server prisma/seed.ts",
     "db:migrate": "prisma migrate deploy",

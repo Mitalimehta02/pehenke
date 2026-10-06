@@ -3,9 +3,10 @@ import { getApp } from "@/lib/server/app";
 import { isSeller, readBuyerId } from "@/lib/server/auth";
 
 /**
- * Serves stored images. Garment and sample images are public. Buyer photos
- * and renders of them are personal data: only their buyer, or the seller they
- * were made for (via ?seller=<slug>&key=<key>, or the demo seller), may see them.
+ * Serves stored images. Garment, jewellery, sample and colour-swatch images are
+ * public. Buyer photos and anything made from them (renders, looks, close-ups)
+ * are personal data: only their buyer, or the seller they were made for (via
+ * ?seller=<slug>&key=<key>, or the demo seller), may see them.
  */
 export const runtime = "nodejs";
 
@@ -19,14 +20,16 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/media/[...ke
     headers: {
       "content-type": blob.contentType,
       // keys are content-addressed: the bytes behind a key never change
-      "cache-control": key.startsWith("garment/") || key.startsWith("sample/") ? "public, max-age=31536000, immutable" : "private, max-age=3600",
+      "cache-control": PUBLIC.some((p) => key.startsWith(p)) ? "public, max-age=31536000, immutable" : "private, max-age=3600",
     },
   });
 }
 
+const PUBLIC = ["garment/", "sample/", "accessory/", "swatch/"];
+
 async function allowed(key: string, req: NextRequest): Promise<boolean> {
   const { prisma } = await getApp();
-  if (key.startsWith("garment/") || key.startsWith("sample/")) return true;
+  if (PUBLIC.some((p) => key.startsWith(p))) return true;
 
   const buyerExternalId = await readBuyerId();
   const sellerSlug = req.nextUrl.searchParams.get("seller");
@@ -45,8 +48,10 @@ async function allowed(key: string, req: NextRequest): Promise<boolean> {
     }
     return false;
   }
-  if (key.startsWith("tryon/")) {
-    const renders = await prisma.tryOn.findMany({ where: { outputKey: key }, include: { buyerPhoto: { include: { buyer: true } }, garment: true } });
+  if (key.startsWith("tryon/") || key.startsWith("look/")) {
+    // a look or close-up belongs to the try-on it was made from
+    const where = key.startsWith("tryon/") ? { outputKey: key } : { OR: [{ closeupKey: key }, { looks: { some: { OR: [{ outputKey: key }, { closeupKey: key }] } } }] };
+    const renders = await prisma.tryOn.findMany({ where, include: { buyerPhoto: { include: { buyer: true } }, garment: true } });
     for (const t of renders) {
       if (t.buyerPhoto.isSample) return true;
       if (buyerExternalId && t.buyerPhoto.buyer?.externalId === buyerExternalId) return true;

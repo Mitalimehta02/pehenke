@@ -4,11 +4,19 @@ import { istDay, startOfIstDay } from "../time";
 
 /** YouCam cost of one cloth-v3 render (verified live: 2 units, charged only on success). */
 export const RENDER_UNITS = 2;
+/** YouCam cost of one look step: necklace, earring or lipstick (verified live: 1 unit each, errors free). */
+export const LOOK_STEP_UNITS = 1;
+export const DEFAULT_BUYER_DAILY_LOOKS = 3;
+
+/** Task id in a task path. Feature names may have two segments ("2d-vto/necklace"). */
+const TASK_PATH = /\/task\/(2d-vto\/[^/]+|(?!2d-vto\/)[^/]+)\/([^/?]+)/;
 
 export interface Caps {
   youcamDailyUnits: number;
   buyerDailyRenders: number;
   geminiDailyLimit: number;
+  /** new (uncached) looks one buyer may start per day */
+  buyerDailyLooks?: number;
 }
 
 export type RenderRefusal = "daily_cap" | "buyer_cap";
@@ -29,12 +37,12 @@ export class Ledger {
   ) {}
 
   /** Logger for YouCamClient. Writes are queued; call flush() before reading totals. */
-  youcamLogger(context: { tryOnId?: string } = {}) {
+  youcamLogger(context: { tryOnId?: string; unitsPerSuccess?: number } = {}) {
     return (e: CallLogEntry) => {
-      const raw = /\/task\/[^/]+\/([^/?]+)/.exec(e.path)?.[1];
-      const taskId = raw ? decodeURIComponent(raw) : null;
-      // null = charged but size unknown: count the full render cost to stay safe
-      const units = e.units ?? RENDER_UNITS;
+      const raw = TASK_PATH.exec(e.path)?.[2];
+      const taskId = raw && raw !== "delete" ? decodeURIComponent(raw) : null;
+      // null = charged but size unknown: count the caller's known cost, else a full render, to stay safe
+      const units = e.units ?? context.unitsPerSuccess ?? RENDER_UNITS;
       // Chain per task so "already charged?" sees the previous write for the same task.
       const prev = taskId ? (this.taskChains.get(taskId) ?? Promise.resolve()) : Promise.resolve();
       const write = prev.then(async () => {
@@ -44,7 +52,7 @@ export class Ledger {
         await this.prisma.apiCall.create({
           data: {
             provider: "youcam",
-            endpoint: `${e.method} ${e.path.replace(/\/task\/([^/]+)\/[^/?]+/, "/task/$1/:id")}`,
+            endpoint: `${e.method} ${e.path.replace(TASK_PATH, "/task/$1/:id")}`,
             httpStatus: typeof e.httpStatus === "number" ? e.httpStatus : null,
             units: already ? 0 : units,
             taskId,
@@ -97,6 +105,25 @@ export class Ledger {
         where: { requestedById: buyerId, createdAt: { gte: startOfIstDay(this.now()) }, status: { in: ["queued", "running", "succeeded"] } },
       });
       if (mine >= this.caps.buyerDailyRenders) return { ok: false, reason: "buyer_cap" };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Whether a look that needs `newSteps` uncached steps may start now. Looks share the
+   * daily unit cap with try-ons; each buyer may start buyerDailyLooks new looks a day
+   * (cached looks are free and not counted).
+   */
+  async canStartLook(buyerId: string | null, newSteps: number): Promise<{ ok: true } | { ok: false; reason: RenderRefusal }> {
+    const spent = await this.youcamUnitsToday();
+    const renders = await this.prisma.tryOn.count({ where: { status: { in: ["queued", "running"] } } });
+    const steps = await this.prisma.lookStep.count({ where: { status: { in: ["queued", "running"] } } });
+    if (spent + renders * RENDER_UNITS + (steps + newSteps) * LOOK_STEP_UNITS > this.caps.youcamDailyUnits) return { ok: false, reason: "daily_cap" };
+    if (buyerId) {
+      const mine = await this.prisma.look.count({
+        where: { requestedById: buyerId, createdAt: { gte: startOfIstDay(this.now()) }, status: { in: ["queued", "running", "succeeded"] } },
+      });
+      if (mine >= (this.caps.buyerDailyLooks ?? DEFAULT_BUYER_DAILY_LOOKS)) return { ok: false, reason: "buyer_cap" };
     }
     return { ok: true };
   }

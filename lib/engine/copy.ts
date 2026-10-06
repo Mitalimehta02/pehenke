@@ -22,6 +22,18 @@ export const copy = {
     deletePhotos: "Delete my photos",
     askFamily: "Ask family",
     skipPhone: "Skip",
+    completeLook: "Complete the look",
+    neckYes: "Yes, it's bare",
+    neckNo: "No, there's jewellery",
+    noEarrings: "No earrings",
+    noNecklace: "No necklace",
+    noLip: "No lip colour",
+    showMe: "Show me",
+    lookRestart: "Start again",
+    lookBack: "Back to my preview",
+    orderLook: "Order this look",
+    orderOutfitOnly: "Order outfit only",
+    changeLook: "Change the look",
   },
 
   greeting: (seller: string) => `Hi! Welcome to ${seller}. See any of our outfits on you before you order. 👗`,
@@ -98,10 +110,31 @@ export const copy = {
   cardLink: () => "Open your card (to save or share)",
   cardImageFooter: () => "Virtual try-on preview: the real fit and colour may vary slightly.",
   cardImageNoPhoto: () => "Try-on image deleted at the buyer's request.",
-  card: (p: { label: string; priceInr: number | null; orderRef: string; disclosure: string | null; seller: string }) => ({
+  card: (p: {
+    label: string;
+    priceInr: number | null;
+    orderRef: string;
+    disclosure: string | null;
+    seller: string;
+    /** jewellery added to the order */
+    extras?: Array<{ label: string; priceInr: number | null }>;
+    totalInr?: number | null;
+    /** shown in the image but not part of the order (lip shade, or jewellery not ordered) */
+    styling?: string[];
+  }) => ({
     title: "Order confirmed",
-    lines: [`${p.label}${inr(p.priceInr)}`, `Order ${p.orderRef} · ${p.seller}`, p.disclosure ?? ""].filter(Boolean),
+    lines: [
+      ...(p.extras?.length
+        ? ["Ordered:", `• ${p.label}${inr(p.priceInr)}`, ...p.extras.map((e) => `• ${e.label}${inr(e.priceInr)}`), p.totalInr != null ? `Total ₹${p.totalInr.toLocaleString("en-IN")}` : ""]
+        : [`${p.label}${inr(p.priceInr)}`]),
+      `Order ${p.orderRef} · ${p.seller}`,
+      p.styling?.length ? copy.cardStyling(p.styling) : "",
+      p.disclosure ?? "",
+    ].filter(Boolean),
   }),
+  cardStyling: (items: string[]) => `Styling suggestion, not included: ${items.join(", ")}`,
+  cardOrdered: () => "Ordered",
+  cardTotal: (n: number) => `Total ₹${n.toLocaleString("en-IN")}`,
   orderRejected: (note: string | null) => `Sorry, the seller couldn't confirm this order${note ? `: ${note}` : "."} Would you like to try another outfit?`,
   ordered: () => "Your order is confirmed. Want to see another outfit on you?",
 
@@ -113,7 +146,7 @@ export const copy = {
     ].filter(Boolean);
     const also = shared.length ? ` Also deleted: ${shared.join(", ")}.` : "";
     if (!s.photos && !s.renders) return shared.length ? `You have no photos stored with us.${also}` : "You have no photos stored with us. Nothing to delete.";
-    const parts = [`Deleted from our servers: ${s.photos} photo${s.photos === 1 ? "" : "s"} and ${s.renders} try-on image${s.renders === 1 ? "" : "s"}.`];
+    const parts = [`Deleted from our servers: ${s.photos} photo${s.photos === 1 ? "" : "s"} and ${s.renders} try-on image${s.renders === 1 ? "" : "s"}${s.looks ? ` (with ${s.looks} completed look${s.looks === 1 ? "" : "s"})` : ""}.`];
     if (s.renders) {
       const done = s.youcam.deleted + s.youcam.alreadyGone;
       parts.push(
@@ -125,6 +158,51 @@ export const copy = {
     return parts.join(" ") + also;
   },
   revoked: (s: DeletionSummary) => `${copy.deleted(s)} You've withdrawn consent, so I won't use your photos again. Say "hi" to start over.`,
+
+  // ---- complete the look ----
+  lookIntro: () => "Let's complete the look. Choosing is free: nothing is made until you tap \"Show me\".",
+  lookUnavailable: (problem: string) =>
+    problem === "several_faces"
+      ? "I can only complete the look when there's one person in the picture. Your preview is still here."
+      : "I couldn't find your face clearly enough in this preview to add jewellery or lip colour. Your preview is still here.",
+  pickEarring: () => "Earrings: which would you like to see?",
+  earsCovered: () => "The outfit covers your ears in this picture (or already shows something there), so I can't add earrings to it.",
+  neckQuestion: () => "Here's a close-up of your preview. Is your neck bare in this picture? I can only add a necklace if it is.",
+  neckNotBare: () => "Then I won't add a necklace. Any jewellery already in the preview is illustrative and not included with the outfit.",
+  pickNecklace: () => "Necklace: which would you like to see?",
+  pickLip: () => "Lip colour that suits this outfit (a styling suggestion only, we don't sell it):",
+  accessoryChoice: (label: string, priceInr: number | null) => `${label}${inr(priceInr)}`,
+  lookBackToPreview: () => "Okay, back to your preview. It's still here.",
+  lookNothing: () => "Nothing chosen, so there's nothing to add. Your preview is still here.",
+  lookSummary: (p: { earring: string | null; necklace: string | null; lip: string | null }) =>
+    [
+      "Your look:",
+      p.earring ? `• Earrings: ${p.earring}` : "",
+      p.necklace ? `• Necklace: ${p.necklace}` : "",
+      p.lip ? `• Lip colour: ${p.lip} (styling suggestion)` : "",
+      "Jewellery is shown at small size on a full-length picture, so you'll also get a close-up: the close-up is the better guide.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  lookWorking: () => "Putting your look together… this takes about 30 seconds. ⏳",
+  lookStillWorking: () => "Still working on your look, almost there…",
+  lookResult: () => "Here's the complete look.",
+  lookCloseup: (hasJewellery: boolean, hasLip: boolean) =>
+    [
+      hasJewellery ? "Close-up. Jewellery is small in the full picture, so use this close-up as the better guide. It's drawn from the shop's photo of the item; size and how it sits may differ a little." : "Close-up.",
+      hasLip ? "The lip colour is a styling suggestion, not part of your order." : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  lookFailed: () => "Sorry, I couldn't make that look. Nothing was charged to you. Your preview is still here; you can try again or order as it is.",
+  lookRefused: (reason: string, looksPerDay: number) =>
+    reason === "daily_cap"
+      ? "Looks are paused for today because we've reached our daily limit. Please come back tomorrow. Your preview is still here."
+      : reason === "buyer_cap"
+        ? `You've made ${looksPerDay} new looks today, which is the daily limit. Looks you've already seen are still available. New ones open again tomorrow.`
+        : reason === "ears_covered"
+          ? "The outfit covers your ears in this picture, so I can't add earrings to it."
+          : "That look isn't available any more. Please choose again.",
 
   familyIntro: () =>
     [
@@ -138,5 +216,5 @@ export const copy = {
     `Family vote on ${label}: 👍 ${t.yes} yes · 👎 ${t.no} no. ${latest.name ?? "Someone"} said ${latest.likes ? "yes" : "no"}.`,
   familyUnavailable: () => "Sorry, I can't make a family link for this preview. Please make a new preview first.",
 
-  help: () => "You can: send a photo, pick an outfit, type \"delete my photos\", or type \"stop\" to withdraw consent.",
+  help: () => "You can: send a photo, pick an outfit, complete the look after a preview, type \"delete my photos\", or type \"stop\" to withdraw consent.",
 };

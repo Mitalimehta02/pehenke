@@ -16,6 +16,8 @@ const schema = z.object({
   YOUCAM_DAILY_UNIT_CAP: z.coerce.number().int().positive().default(60),
   /** new (uncached) renders one buyer may start per day */
   BUYER_DAILY_RENDERS: z.coerce.number().int().positive().default(6),
+  /** new (uncached) complete-the-look renders one buyer may start per day (up to 3 units each) */
+  BUYER_DAILY_LOOKS: z.coerce.number().int().positive().default(3),
   /** Gemini requests per day we allow ourselves (free tier allows 20) */
   GEMINI_DAILY_LIMIT: z.coerce.number().int().nonnegative().default(18),
   /** database storage limit shown on the seller page (Neon free plan: 1 GB per project; writes are blocked above it) */

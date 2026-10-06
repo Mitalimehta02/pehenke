@@ -47,12 +47,14 @@ export class OrderService {
   /** The stored card image key, rendering it first if needed; null if the order has no card. */
   async ensureCardImage(orderId: string): Promise<string | null> {
     const { prisma, blobs } = this.d;
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { garment: true, seller: true, tryOn: true } });
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { garment: true, seller: true, tryOn: true, look: true } });
     if (!order?.cardToken || order.cardStatus !== "approved" || !order.tryOn?.outputKey) return null;
     if (order.cardImageKey && (await blobs.get(order.cardImageKey))) return order.cardImageKey;
-    const [tryOn, garment] = await Promise.all([blobs.get(order.tryOn.outputKey), blobs.get(order.garment.photoKey)]);
-    if (!tryOn) return null;
-    const key = await storeCardImage(blobs, { card: buildOrderCard(order), tryOn: tryOn.bytes, garment: garment?.bytes ?? null });
+    const card = buildOrderCard(order);
+    // the look image if a look was ordered, else the plain try-on
+    const [shown, garment] = await Promise.all([card.imageKey ? blobs.get(card.imageKey) : null, blobs.get(order.garment.photoKey)]);
+    if (!shown) return null;
+    const key = await storeCardImage(blobs, { card, tryOn: shown.bytes, garment: garment?.bytes ?? null });
     await prisma.order.update({ where: { id: orderId }, data: { cardImageKey: key } });
     return key;
   }
@@ -60,7 +62,7 @@ export class OrderService {
   /** Public card by its link token (approved orders whose try-on still exists). */
   async cardByToken(token: string) {
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return null;
-    const order = await this.d.prisma.order.findUnique({ where: { cardToken: token }, include: { garment: true, seller: true, tryOn: true } });
+    const order = await this.d.prisma.order.findUnique({ where: { cardToken: token }, include: { garment: true, seller: true, tryOn: true, look: true } });
     if (!order || order.cardStatus !== "approved" || !order.tryOn?.outputKey) return null;
     return order;
   }

@@ -12,6 +12,8 @@ export const RETENTION_DAYS = 30;
 export interface DeletionSummary {
   photos: number;
   renders: number;
+  /** complete-the-look images deleted with the renders */
+  looks: number;
   /** YouCam task-delete results for the renders' tasks */
   youcam: { deleted: number; alreadyGone: number; failed: number };
   /** orders whose WhatsApp number was removed */
@@ -86,6 +88,14 @@ export class ConsentService {
     const photos = await prisma.buyerPhoto.findMany({ where: { ...where, isSample: false }, include: { tryOns: true } });
     const renders = photos.flatMap((p) => p.tryOns);
     const renderIds = renders.map((r) => r.id);
+    // complete-the-look images made from these renders (rows go with the renders; blobs and tasks here)
+    const looks = await prisma.look.findMany({ where: { tryOnId: { in: renderIds } } });
+    const lookSteps = await prisma.lookStep.findMany({ where: { tryOnId: { in: renderIds } } });
+    const lookKeys = [
+      ...renders.map((r) => r.closeupKey),
+      ...looks.flatMap((l) => [l.outputKey, l.closeupKey]),
+      ...lookSteps.map((st) => st.outputKey),
+    ].filter((k): k is string => !!k);
     const shared = await this.deleteShared([{ tryOnId: { in: renderIds } }, ...(buyer ? [buyer] : [])]);
 
     const youcam = { deleted: 0, alreadyGone: 0, failed: 0 };
@@ -100,6 +110,10 @@ export class ConsentService {
         else youcam.failed++;
       }
     }
+    // look steps uploaded a crop of the buyer's face: delete those tasks at YouCam too (not counted in the summary)
+    for (const st of lookSteps.filter((x) => x.taskId)) {
+      await yc.deleteTask(st.taskId!).catch(() => undefined);
+    }
 
     const keys = [...photos.map((p) => p.blobKey), ...renders.map((r) => r.outputKey).filter((k): k is string => !!k)];
     await prisma.$transaction([
@@ -113,18 +127,33 @@ export class ConsentService {
       ...(await prisma.tryOn.findMany({ where: { outputKey: { in: keys } }, select: { outputKey: true } })).map((x) => x.outputKey!),
     ]);
     await blobs.delete(keys.filter((k) => !stillUsed.has(k)));
-    return { result: { photos: photos.length, renders: renders.length, youcam, ...shared }, keys: new Set(keys) };
+    // look images are content-addressed too: keep any that another (e.g. sample) render still uses
+    const lookStillUsed = new Set(
+      [
+        ...(await prisma.look.findMany({ where: { OR: [{ outputKey: { in: lookKeys } }, { closeupKey: { in: lookKeys } }] }, select: { outputKey: true, closeupKey: true } })).flatMap((l) => [l.outputKey, l.closeupKey]),
+        ...(await prisma.tryOn.findMany({ where: { closeupKey: { in: lookKeys } }, select: { closeupKey: true } })).map((x) => x.closeupKey),
+        ...(await prisma.lookStep.findMany({ where: { outputKey: { in: lookKeys } }, select: { outputKey: true } })).map((x) => x.outputKey),
+      ].filter((k): k is string => !!k),
+    );
+    await blobs.delete(lookKeys.filter((k) => !lookStillUsed.has(k)));
+    return { result: { photos: photos.length, renders: renders.length, looks: looks.length, youcam, ...shared }, keys: new Set([...keys, ...lookKeys]) };
   }
 
   /** Clear WhatsApp numbers and card links on matching orders, and delete matching family links. */
   private async deleteShared(scopes: Array<Prisma.OrderWhereInput & Prisma.FamilyVoteWhereInput>) {
     const { prisma, blobs } = this.deps;
     const orders = await prisma.order.findMany({
-      where: { AND: [{ OR: scopes }, { OR: [{ buyerWhatsapp: { not: null } }, { cardToken: { not: null } }, { cardImageKey: { not: null } }] }] },
-      select: { id: true, buyerWhatsapp: true, cardToken: true, cardImageKey: true },
+      where: { AND: [{ OR: scopes }, { OR: [{ buyerWhatsapp: { not: null } }, { cardToken: { not: null } }, { cardImageKey: { not: null } }, { lookId: { not: null } }, { lookNeckBare: { not: null } }] }] },
+      select: { id: true, buyerWhatsapp: true, cardToken: true, cardImageKey: true, lookItems: true },
     });
     if (orders.length) {
-      await prisma.order.updateMany({ where: { id: { in: orders.map((o) => o.id) } }, data: { buyerWhatsapp: null, cardToken: null, cardImageKey: null } });
+      await prisma.order.updateMany({ where: { id: { in: orders.map((o) => o.id) } }, data: { buyerWhatsapp: null, cardToken: null, cardImageKey: null, lookNeckBare: null } });
+      // the look goes with the photos: keep only what was actually ordered (the seller's record), drop styling choices
+      for (const o of orders) {
+        if (!Array.isArray(o.lookItems)) continue;
+        const ordered = (o.lookItems as Array<{ ordered?: boolean }>).filter((i) => i.ordered);
+        await prisma.order.update({ where: { id: o.id }, data: { lookId: null, lookItems: ordered as unknown as Prisma.InputJsonValue } });
+      }
       await blobs.delete(orders.map((o) => o.cardImageKey).filter((k): k is string => !!k));
     }
     const votes = await prisma.familyVote.deleteMany({ where: { OR: scopes } });

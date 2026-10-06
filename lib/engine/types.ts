@@ -62,6 +62,16 @@ export const BTN = {
   deletePhotos: "delete_photos",
   askFamily: "ask_family",
   skipPhone: "skip_phone",
+  completeLook: "look",
+  neckYes: "neck_yes",
+  neckNo: "neck_no",
+  lookEarring: "look_earring", // look_earring:<accessoryId|none>
+  lookNecklace: "look_necklace", // look_necklace:<accessoryId|none>
+  lookLip: "look_lip", // look_lip:<0|1|none>
+  lookShow: "look_show",
+  lookRestart: "look_restart",
+  lookBack: "look_back",
+  orderLook: "order_look",
 } as const;
 
 export const param = (id: string) => id.slice(id.indexOf(":") + 1);

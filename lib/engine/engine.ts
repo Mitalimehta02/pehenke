@@ -1,13 +1,17 @@
 import type { ConsentService } from "../consent/service";
 import type { FamilyVoteService, VoteEvent } from "../family/service";
-import type { Conversation, ConvState, Garment, Prisma, PrismaClient, Seller } from "../generated/prisma/client";
+import type { Accessory, Conversation, ConvState, Garment, Prisma, PrismaClient, Seller } from "../generated/prisma/client";
 import { links, waLink } from "../links";
+import { lipShadesForGarment } from "../look/lipShade";
+import { accessoryTryable, type LookPrep, type LookService } from "../look/service";
 import { normalizePhone } from "../orders/phone";
 import { checkBuyerPhoto } from "../photos/buyerPhoto";
 import type { BlobStore } from "../storage/blobs";
 import { storeImage } from "../storage/blobs";
-import { buildOrderCard } from "../orders/cardData";
+import { buildOrderCard, type LookItem } from "../orders/cardData";
 import type { TryOnService } from "../tryon/service";
+import { DEFAULT_BUYER_DAILY_LOOKS } from "../units/ledger";
+import sharp from "sharp";
 import { copy } from "./copy";
 import { BTN, btn, param, type Button, type ChatMessage, type Incoming, type Outgoing } from "./types";
 
@@ -22,6 +26,8 @@ import { BTN, btn, param, type Button, type ChatMessage, type Incoming, type Out
  *   NEW -> AWAIT_CONSENT -> AWAIT_PHOTO -> PICK_GARMENT -> TRYON_RUNNING -> PREVIEW
  *       -> AWAIT_PHONE -> AWAIT_SELLER -> ORDERED            (DECLINED: consent refused)
  *   PREVIEW: "Ask family" makes a public vote link and stays in PREVIEW.
+ *   PREVIEW -> LOOK_PICK (earrings, neck question, necklace, lip shade: all free)
+ *           -> LOOK_RUNNING -> PREVIEW (now showing the look)
  *   any state: "delete my photos" | "stop" | "help"
  */
 
@@ -34,6 +40,19 @@ export interface EngineDeps {
   /** set after construction (the try-on service calls back into the engine) */
   tryOns?: TryOnService;
   family?: FamilyVoteService;
+  looks?: LookService;
+}
+
+/** "Complete the look" choices being made. undefined = not asked yet, null = none wanted / not possible. */
+interface LookDraft {
+  tryOnId: string;
+  /** the two shades proposed for this garment */
+  lips: Array<{ hex: string; name: string; swatchKey: string }>;
+  earringId?: string | null;
+  /** answer to "Is your neck bare in this picture?" */
+  neckBare?: boolean | null;
+  necklaceId?: string | null;
+  lip?: { hex: string; name: string } | null;
 }
 
 interface Ctx {
@@ -47,6 +66,14 @@ interface Ctx {
   orderId?: string;
   /** outfit preselected by a shared link: rendered as soon as there's a photo */
   wantGarmentId?: string;
+  look?: LookDraft;
+  /** look being made (LOOK_RUNNING) */
+  pendingLookId?: string;
+  /** look shown in the current preview, and the buyer's neck answer for it */
+  lookId?: string;
+  lookNeckBare?: boolean | null;
+  /** "Order this look": the look and its jewellery go on the order */
+  orderLook?: boolean;
 }
 
 interface Turn {
@@ -63,11 +90,13 @@ export class NotFoundError extends Error {}
 export class Engine {
   tryOns?: TryOnService;
   family?: FamilyVoteService;
+  looks?: LookService;
   private locks = new Map<string, Promise<unknown>>();
 
   constructor(private readonly d: EngineDeps) {
     this.tryOns = d.tryOns;
     this.family = d.family;
+    this.looks = d.looks;
   }
 
   // ---------------- entry points ----------------
@@ -119,7 +148,7 @@ export class Engine {
   /** The seller approved or rejected an order card. */
   async onOrderDecided(orderId: string): Promise<void> {
     const { prisma } = this.d;
-    const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: { garment: true, tryOn: true, seller: true } });
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: { garment: true, tryOn: true, seller: true, look: true } });
     await this.withLock(order.conversationId, async () => {
       const conv = await prisma.conversation.findUniqueOrThrow({ where: { id: order.conversationId } });
       const turn = this.turn(conv, order.seller);
@@ -135,6 +164,23 @@ export class Engine {
       }
       await this.commit(turn);
     });
+  }
+
+  /** A look finished (or failed): answer every conversation waiting for it. */
+  async onLookFinished(lookId: string): Promise<void> {
+    const convs = await this.d.prisma.conversation.findMany({
+      where: { state: "LOOK_RUNNING", context: { path: ["pendingLookId"], equals: lookId } },
+      include: { seller: true },
+    });
+    for (const c of convs) {
+      await this.withLock(c.id, async () => {
+        const fresh = await this.d.prisma.conversation.findUniqueOrThrow({ where: { id: c.id } });
+        const turn = this.turn(fresh, c.seller);
+        if (fresh.state !== "LOOK_RUNNING" || turn.ctx.pendingLookId !== lookId) return;
+        await this.showLook(turn, lookId);
+        await this.commit(turn);
+      });
+    }
   }
 
   /** Someone voted on a family link: post the tally in the buyer's chat (state unchanged). */
@@ -194,6 +240,10 @@ export class Engine {
         return this.onPhoto(t, inc, button);
       case "AWAIT_PHONE":
         return this.onPhone(t, inc, button);
+      case "LOOK_PICK":
+        return this.onLookPick(t, button);
+      case "LOOK_RUNNING":
+        return this.onLookRunning(t);
       case "PICK_GARMENT":
       case "PREVIEW":
       case "ORDERED":
@@ -351,7 +401,9 @@ export class Engine {
     if (button.startsWith(`${BTN.garment}:`)) return this.startTryOn(t, param(button));
     if (button === BTN.tryAnother) return this.listGarments(t);
     if (button === BTN.newPhoto) return this.askPhoto(t);
-    if (button === BTN.order && t.state === "PREVIEW") return this.askPhone(t);
+    if (button === BTN.order && t.state === "PREVIEW") return this.askPhone(t, false);
+    if (button === BTN.orderLook && t.state === "PREVIEW") return this.askPhone(t, true);
+    if (button === BTN.completeLook && t.state === "PREVIEW") return this.startLook(t);
     if (button === BTN.askFamily) return this.askFamily(t);
     if (t.state === "AWAIT_SELLER") {
       t.out.push({ kind: "text", text: copy.waitingSeller(t.seller.name), buttons: [this.b(BTN.tryAnother, copy.buttons.tryAnother)] });
@@ -402,7 +454,8 @@ export class Engine {
       t.state = "PICK_GARMENT";
       return;
     }
-    t.ctx = { ...t.ctx, garmentId: tryOn.garmentId, previewTryOnId: tryOn.id, orderId: undefined };
+    // a new preview starts without a look
+    t.ctx = { ...t.ctx, garmentId: tryOn.garmentId, previewTryOnId: tryOn.id, orderId: undefined, look: undefined, pendingLookId: undefined, lookId: undefined, lookNeckBare: undefined, orderLook: undefined };
     t.out.push({
       kind: "image",
       mediaKey: tryOn.outputKey,
@@ -415,15 +468,201 @@ export class Engine {
   private previewButtons(): Button[] {
     return [
       this.b(BTN.order, copy.buttons.order),
+      this.b(BTN.completeLook, copy.buttons.completeLook),
       this.b(BTN.askFamily, copy.buttons.askFamily),
       this.b(BTN.tryAnother, copy.buttons.tryAnother),
       this.b(BTN.newPhoto, copy.buttons.newPhoto),
     ];
   }
 
-  /** "Order this": ask for a WhatsApp number (optional) before the order goes to the seller. */
-  private async askPhone(t: Turn) {
+  // ---------------- complete the look ----------------
+
+  /** Accessories of this seller that buyers may pick, by type. */
+  private async sellerAccessories(sellerId: string) {
+    const all = (await this.d.prisma.accessory.findMany({ where: { sellerId }, orderBy: { createdAt: "asc" } })).filter(accessoryTryable);
+    return { earrings: all.filter((a) => a.type === "earring"), necklaces: all.filter((a) => a.type === "necklace") };
+  }
+
+  /** "Complete the look": everything here is free; nothing renders until "Show me". */
+  private async startLook(t: Turn) {
+    const { prisma, blobs } = this.d;
+    if (!this.looks) throw new Error("engine: look service not wired");
+    const tryOn = t.ctx.previewTryOnId ? await prisma.tryOn.findUnique({ where: { id: t.ctx.previewTryOnId }, include: { garment: true } }) : null;
+    if (!tryOn?.outputKey) return this.listGarments(t);
+    const { prep } = await this.looks.prepare(tryOn.id);
+    if (!prep.crop) {
+      return void t.out.push({ kind: "text", text: copy.lookUnavailable(prep.problem ?? "no_face"), buttons: this.previewButtons().filter((b) => b.id !== BTN.completeLook) });
+    }
+    // two lip shades from the garment's colours (free), each with a small colour swatch to tap
+    const garment = await blobs.get(tryOn.garment.photoKey);
+    const shades = garment ? (await lipShadesForGarment(garment.bytes)).shades : [];
+    const lips: LookDraft["lips"] = [];
+    for (const s of shades) {
+      const png = await sharp({ create: { width: 96, height: 96, channels: 3, background: s.hex } }).png().toBuffer();
+      lips.push({ hex: s.hex, name: s.name, swatchKey: (await storeImage(blobs, "swatch", png)).key });
+    }
+    t.ctx.look = { tryOnId: tryOn.id, lips };
+    t.ctx.lookId = undefined;
+    t.ctx.orderLook = undefined;
+    t.state = "LOOK_PICK";
+    t.out.push({ kind: "text", text: copy.lookIntro() });
+    return this.lookNext(t);
+  }
+
+  /** Ask the next open question: earrings -> neck -> necklace -> lip shade -> confirm. */
+  private async lookNext(t: Turn): Promise<void> {
+    const draft = t.ctx.look;
+    if (!draft || !this.looks) return this.leaveLook(t);
+    const tryOn = await this.d.prisma.tryOn.findUnique({ where: { id: draft.tryOnId } });
+    if (!tryOn) return this.listGarments(t);
+    const prep = (tryOn.lookPrep ?? {}) as LookPrep;
+    const { earrings, necklaces } = await this.sellerAccessories(t.seller.id);
+    const choice = (base: string, a: Accessory) => ({ id: btn(base, a.id), label: copy.accessoryChoice(a.label, a.priceInr), mediaKey: a.photoKey });
+
+    if (draft.earringId === undefined) {
+      if (!earrings.length) draft.earringId = null;
+      else if (!prep.earsClear) {
+        // say why, in plain words, instead of silently hiding the option
+        draft.earringId = null;
+        t.out.push({ kind: "text", text: copy.earsCovered() });
+      } else {
+        return void t.out.push({ kind: "choices", text: copy.pickEarring(), choices: earrings.map((a) => choice(BTN.lookEarring, a)), buttons: [this.b(btn(BTN.lookEarring, "none"), copy.buttons.noEarrings)] });
+      }
+    }
+    if (draft.necklaceId === undefined) {
+      if (!necklaces.length) draft.necklaceId = null;
+      else if (draft.neckBare === undefined && tryOn.closeupKey) {
+        // no reliable automatic check exists for the neck: the buyer looks at the close-up and answers
+        return void t.out.push({ kind: "image", mediaKey: tryOn.closeupKey, caption: copy.neckQuestion(), buttons: [this.b(BTN.neckYes, copy.buttons.neckYes), this.b(BTN.neckNo, copy.buttons.neckNo)] });
+      } else if (draft.neckBare !== true) {
+        draft.necklaceId = null;
+      } else {
+        return void t.out.push({ kind: "choices", text: copy.pickNecklace(), choices: necklaces.map((a) => choice(BTN.lookNecklace, a)), buttons: [this.b(btn(BTN.lookNecklace, "none"), copy.buttons.noNecklace)] });
+      }
+    }
+    if (draft.lip === undefined) {
+      if (!draft.lips.length) draft.lip = null;
+      else {
+        return void t.out.push({
+          kind: "choices",
+          text: copy.pickLip(),
+          choices: draft.lips.map((l, i) => ({ id: btn(BTN.lookLip, String(i)), label: l.name, mediaKey: l.swatchKey })),
+          buttons: [this.b(btn(BTN.lookLip, "none"), copy.buttons.noLip)],
+        });
+      }
+    }
+    const earring = earrings.find((a) => a.id === draft.earringId);
+    const necklace = necklaces.find((a) => a.id === draft.necklaceId);
+    if (!earring && !necklace && !draft.lip) {
+      t.out.push({ kind: "text", text: copy.lookNothing(), buttons: this.previewButtons() });
+      return this.leaveLook(t);
+    }
+    t.out.push({
+      kind: "text",
+      text: copy.lookSummary({
+        earring: earring ? copy.accessoryChoice(earring.label, earring.priceInr) : null,
+        necklace: necklace ? copy.accessoryChoice(necklace.label, necklace.priceInr) : null,
+        lip: draft.lip?.name ?? null,
+      }),
+      buttons: [this.b(BTN.lookShow, copy.buttons.showMe), this.b(BTN.lookRestart, copy.buttons.lookRestart), this.b(BTN.lookBack, copy.buttons.lookBack)],
+    });
+  }
+
+  private leaveLook(t: Turn) {
+    t.ctx.look = undefined;
+    t.ctx.pendingLookId = undefined;
+    t.state = "PREVIEW";
+  }
+
+  private async onLookPick(t: Turn, button: string) {
+    const draft = t.ctx.look;
+    if (!draft) {
+      this.leaveLook(t);
+      return this.onBrowse(t, "", button);
+    }
+    const arg = param(button);
+    if (button.startsWith(`${BTN.lookEarring}:`)) draft.earringId = arg === "none" ? null : arg;
+    else if (button === BTN.neckYes) draft.neckBare = true;
+    else if (button === BTN.neckNo) {
+      draft.neckBare = false;
+      t.out.push({ kind: "text", text: copy.neckNotBare() });
+    } else if (button.startsWith(`${BTN.lookNecklace}:`)) draft.necklaceId = arg === "none" ? null : arg;
+    else if (button.startsWith(`${BTN.lookLip}:`)) {
+      const l = arg === "none" ? null : draft.lips[Number(arg)];
+      draft.lip = l ? { hex: l.hex, name: l.name } : null;
+    } else if (button === BTN.lookRestart) {
+      t.ctx.look = { tryOnId: draft.tryOnId, lips: draft.lips };
+    } else if (button === BTN.lookShow) {
+      return this.requestLook(t, draft);
+    } else if (button === BTN.lookBack) {
+      this.leaveLook(t);
+      return void t.out.push({ kind: "text", text: copy.lookBackToPreview(), buttons: this.previewButtons() });
+    } else if (button) {
+      // any other button (order, try another, new photo...) leaves the look and does that
+      this.leaveLook(t);
+      return this.onBrowse(t, "", button);
+    }
+    return this.lookNext(t);
+  }
+
+  private async requestLook(t: Turn, draft: LookDraft) {
+    if (!this.looks) throw new Error("engine: look service not wired");
+    const r = await this.looks.request({ tryOnId: draft.tryOnId, buyerId: t.conv.buyerId, necklaceId: draft.necklaceId, earringId: draft.earringId, lip: draft.lip });
+    if (r.kind === "refused") {
+      // choices stay, so the buyer can change them; a cap refusal sends them back to the preview
+      const cap = r.reason === "daily_cap" || r.reason === "buyer_cap";
+      t.out.push({
+        kind: "text",
+        text: r.reason === "no_face" ? copy.lookUnavailable("no_face") : copy.lookRefused(r.reason, this.tryOns?.caps.buyerDailyLooks ?? DEFAULT_BUYER_DAILY_LOOKS),
+        buttons: cap ? this.previewButtons() : [this.b(BTN.lookRestart, copy.buttons.lookRestart), this.b(BTN.lookBack, copy.buttons.lookBack)],
+      });
+      if (cap) this.leaveLook(t);
+      return;
+    }
+    t.ctx.lookNeckBare = draft.neckBare ?? null;
+    if (r.kind === "cached") return this.showLook(t, r.look.id);
+    t.ctx.pendingLookId = r.look.id;
+    t.state = "LOOK_RUNNING";
+    t.out.push({ kind: "status", status: "working" }, { kind: "text", text: copy.lookWorking() });
+  }
+
+  private async onLookRunning(t: Turn) {
+    const look = t.ctx.pendingLookId ? await this.d.prisma.look.findUnique({ where: { id: t.ctx.pendingLookId } }) : null;
+    if (!look || !["queued", "running"].includes(look.status)) return this.showLook(t, look?.id ?? "");
+    t.out.push({ kind: "text", text: copy.lookStillWorking() });
+  }
+
+  /** Show a finished look as two images: the full-body look and the close-up (the better guide for jewellery). */
+  private async showLook(t: Turn, lookId: string) {
+    const look = lookId ? await this.d.prisma.look.findUnique({ where: { id: lookId } }) : null;
+    t.ctx.look = undefined;
+    t.ctx.pendingLookId = undefined;
+    t.state = "PREVIEW";
+    t.out.push({ kind: "status", status: "idle" });
+    if (!look || look.status !== "succeeded" || !look.outputKey || !look.closeupKey) {
+      t.ctx.lookId = undefined;
+      return void t.out.push({ kind: "text", text: copy.lookFailed(), buttons: this.previewButtons() });
+    }
+    t.ctx.lookId = look.id;
+    const hasJewellery = !!(look.necklaceId || look.earringId);
+    t.out.push({ kind: "image", mediaKey: look.outputKey, caption: copy.lookResult() });
+    t.out.push({
+      kind: "image",
+      mediaKey: look.closeupKey,
+      caption: copy.lookCloseup(hasJewellery, !!look.lipHex),
+      buttons: [
+        this.b(BTN.orderLook, copy.buttons.orderLook),
+        this.b(BTN.order, copy.buttons.orderOutfitOnly),
+        this.b(BTN.completeLook, copy.buttons.changeLook),
+        this.b(BTN.tryAnother, copy.buttons.tryAnother),
+      ],
+    });
+  }
+
+  /** "Order this" / "Order this look": ask for a WhatsApp number (optional) before the order goes to the seller. */
+  private async askPhone(t: Turn, withLook: boolean) {
     if (!t.ctx.previewTryOnId || !t.ctx.garmentId) return this.listGarments(t);
+    t.ctx.orderLook = withLook && !!t.ctx.lookId;
     t.out.push({ kind: "text", text: copy.askPhone(t.seller.name), buttons: [this.b(BTN.skipPhone, copy.buttons.skipPhone)] });
     t.state = "AWAIT_PHONE";
   }
@@ -441,6 +680,18 @@ export class Engine {
     const tryOnId = t.ctx.previewTryOnId;
     const tryOn = tryOnId ? await prisma.tryOn.findUnique({ where: { id: tryOnId } }) : null;
     if (!tryOn || !t.ctx.garmentId) return this.listGarments(t);
+    // "Order this look": the jewellery in the look goes on the order; the lip shade is only a styling suggestion.
+    const look =
+      t.ctx.orderLook && t.ctx.lookId
+        ? await prisma.look.findFirst({ where: { id: t.ctx.lookId, tryOnId: tryOn.id, status: "succeeded" }, include: { necklace: true, earring: true } })
+        : null;
+    const lookItems: LookItem[] = [];
+    if (look) {
+      for (const a of [look.earring, look.necklace]) {
+        if (a) lookItems.push({ kind: a.type, label: a.label, priceInr: a.priceInr, ordered: true, fromSellerPhoto: true });
+      }
+      if (look.lipHex) lookItems.push({ kind: "lip", label: look.lipName ?? look.lipHex, priceInr: null, ordered: false, fromSellerPhoto: false, hex: look.lipHex });
+    }
     const order = await prisma.order.create({
       data: {
         sellerId: t.seller.id,
@@ -451,6 +702,10 @@ export class Engine {
         disclosureText: tryOn.disclosureText,
         pixelSummary: { verdict: tryOn.verdict, blockReason: tryOn.blockReason, pixelChecks: tryOn.pixelChecks ?? null } as Prisma.InputJsonValue,
         buyerWhatsapp: phone,
+        lookId: look?.id ?? null,
+        lookNeckBare: look ? (t.ctx.lookNeckBare ?? null) : null,
+        lookItems: look ? (lookItems as unknown as Prisma.InputJsonValue) : undefined,
+        items: look ? { create: [look.earring, look.necklace].filter((a): a is Accessory => !!a).map((a) => ({ accessoryId: a.id, type: a.type, label: a.label, priceInr: a.priceInr })) } : undefined,
       },
     });
     t.ctx.orderId = order.id;

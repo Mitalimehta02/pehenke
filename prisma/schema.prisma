@@ -52,6 +52,8 @@ enum ConvState {
   PICK_GARMENT
   TRYON_RUNNING
   PREVIEW
+  LOOK_PICK
+  LOOK_RUNNING
   AWAIT_PHONE
   AWAIT_SELLER
   ORDERED
@@ -90,6 +92,11 @@ enum OrderOutcome {
   cancelled
 }
 
+enum AccessoryType {
+  earring
+  necklace
+}
+
 enum Framing {
   full
   chest
@@ -118,6 +125,7 @@ model Seller {
   createdAt     DateTime @default(now())
 
   garments      Garment[]
+  accessories   Accessory[]
   conversations Conversation[]
   orders        Order[]
   buyerPhotos   BuyerPhoto[]
@@ -174,6 +182,7 @@ model Buyer {
   orders        Order[]
   tryOns        TryOn[]
   familyVotes   FamilyVote[]
+  looks         Look[]
 
   @@unique([channel, externalId])
 }
@@ -286,9 +295,16 @@ model TryOn {
   error          String?
   createdAt      DateTime     @default(now())
 
+  /// complete-the-look: { face: {cx,cy,size}, crop: {left,top,width,height,scale}, earsClear, earPct, foreheadPct } or { error }
+  lookPrep       Json?
+  /// head-and-shoulders close-up of this render (blob key), shown with the neck question
+  closeupKey     String?
+
   waiting     Conversation[]
   orders      Order[]
   familyVotes FamilyVote[]
+  looks       Look[]
+  lookSteps   LookStep[]
 
   @@index([status])
   @@index([requestedById, createdAt])
@@ -325,7 +341,16 @@ model Order {
   cardSentAt     DateTime?
   /// seller marked the order dispatched
   dispatchedAt   DateTime?
+  /// complete-the-look shown on the card (null: plain try-on, or the buyer deleted their photos)
+  lookId         String?
+  look           Look?        @relation(fields: [lookId], references: [id], onDelete: SetNull)
+  /// buyer's answer to "Is your neck bare in this picture?" (null: not asked)
+  lookNeckBare   Boolean?
+  /// what the look showed, for the card and the seller: [{ kind, label, priceInr, ordered, fromSellerPhoto, hex? }]
+  lookItems      Json?
   createdAt      DateTime     @default(now())
+
+  items OrderItem[]
 
   @@index([sellerId, createdAt])
 }
@@ -381,4 +406,115 @@ model ApiCall {
   createdAt  DateTime @default(now())
 
   @@index([provider, day])
+}
+
+/// Jewellery a seller offers for "complete the look". The photo is used as given by
+/// the try-on API (not reshaped), so it passes its own photo gate first.
+model Accessory {
+  id              String        @id @default(cuid())
+  sellerId        String
+  seller          Seller        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  type            AccessoryType
+  label           String
+  priceInr        Int?
+  photoKey        String
+  photoHash       String
+  photoW          Int
+  photoH          Int
+  gateStatus      GateStatus    @default(pending)
+  gateProblems    Json?
+  /// exact "send this instead" text shown to the seller
+  gateAdvice      String?
+  gateBy          String?
+  gateAt          DateTime?
+  /// earring pair photo: suggested crop to one earring { left, top, width, height } (pixels); the seller confirms it
+  cropSuggestion  Json?
+  /// original (pair) photo kept until the seller confirms or replaces the crop
+  originalKey     String?
+  /// { source, author, licence, licenceUrl } for seeded images (/credits)
+  credit          Json?
+  active          Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+
+  orderItems     OrderItem[]
+  necklaceLooks  Look[]        @relation("lookNecklace")
+  earringLooks   Look[]        @relation("lookEarring")
+
+  @@unique([sellerId, photoHash])
+}
+
+/// One complete-the-look result for a try-on: crop -> necklace -> earrings -> lipstick,
+/// pasted back. Cached by inputsHash like try-ons.
+model Look {
+  id            String      @id @default(cuid())
+  /// sha256(try-on output | crop box | necklace photo | earring photo | lip colour + intensity | pipeline version)
+  inputsHash    String      @unique
+  tryOnId       String
+  tryOn         TryOn       @relation(fields: [tryOnId], references: [id], onDelete: Cascade)
+  /// buyer whose request started it (null for pre-renders); per-buyer daily cap
+  requestedById String?
+  requestedBy   Buyer?      @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  necklaceId    String?
+  necklace      Accessory?  @relation("lookNecklace", fields: [necklaceId], references: [id], onDelete: SetNull)
+  earringId     String?
+  earring       Accessory?  @relation("lookEarring", fields: [earringId], references: [id], onDelete: SetNull)
+  lipHex        String?
+  lipName       String?
+  status        TryOnStatus @default(queued)
+  /// ordered step hashes (LookStep ids)
+  stepHashes    Json        @default("[]")
+  /// units charged for steps this look started (cached steps cost nothing)
+  units         Int         @default(0)
+  /// full-body image with only the changed pixels pasted back
+  outputKey     String?
+  /// head-and-shoulders close-up
+  closeupKey    String?
+  error         String?
+  createdAt     DateTime    @default(now())
+  finishedAt    DateTime?
+
+  orders Order[]
+
+  @@index([status])
+  @@index([requestedById, createdAt])
+  @@index([tryOnId])
+}
+
+/// One paid API step of a look (necklace, earring or lipstick on a crop), cached by
+/// hash so changing only the lip shade re-uses the jewellery steps.
+model LookStep {
+  /// sha256(previous image hash | feature | product photo hash | parameters)
+  hash       String      @id
+  tryOnId    String
+  tryOn      TryOn       @relation(fields: [tryOnId], references: [id], onDelete: Cascade)
+  /// "2d-vto/necklace" | "2d-vto/earring" | "makeup-vto"
+  feature    String
+  status     TryOnStatus @default(queued)
+  /// YouCam task id, written before polling starts
+  taskId     String?
+  units      Int         @default(0)
+  outputKey  String?
+  outputHash String?
+  error      String?
+  createdAt  DateTime    @default(now())
+  finishedAt DateTime?
+
+  @@index([tryOnId])
+  @@index([status])
+}
+
+/// Jewellery added to an order (the garment itself stays on Order.garment). Label and
+/// price are copied so the order record survives later edits.
+model OrderItem {
+  id          String        @id @default(cuid())
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  accessoryId String?
+  accessory   Accessory?    @relation(fields: [accessoryId], references: [id], onDelete: SetNull)
+  type        AccessoryType
+  label       String
+  priceInr    Int?
+  createdAt   DateTime      @default(now())
+
+  @@index([orderId])
 }

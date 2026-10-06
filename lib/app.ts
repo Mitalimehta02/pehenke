@@ -4,7 +4,10 @@ import { Engine } from "./engine/engine";
 import { FamilyVoteService } from "./family/service";
 import type { PrismaClient } from "./generated/prisma/client";
 import { GarmentGate } from "./gate/garmentGate";
+import { AccessoryService } from "./accessories/service";
 import { GarmentService } from "./garments/service";
+import { LookService } from "./look/service";
+import type { FaceFinder } from "./look/faceFinder";
 import { DEFAULT_APP_URL } from "./links";
 import { OrderService } from "./orders/service";
 import { PrismaBlobStore } from "./storage/blobs";
@@ -21,6 +24,8 @@ export interface AppDeps {
   /** public base URL for shared links (APP_URL) */
   baseUrl?: string;
   pollTimeoutMs?: number;
+  /** face locator for "complete the look" (tests inject one; default: the bundled detector) */
+  findFaces?: FaceFinder;
   /** vision auditor for the seller photo gate (optional); receives a per-request hook for the Gemini budget */
   auditor?: (onRequest: (status: number | null) => void) => RenderAuditor | undefined;
 }
@@ -44,11 +49,23 @@ export function createApp(d: AppDeps) {
     onFinished: (id) => engine.onTryOnFinished(id),
   });
   engine.tryOns = tryOns;
+  const looks = new LookService({
+    prisma: d.prisma,
+    blobs,
+    ledger,
+    youcam: d.youcam,
+    now: d.now,
+    pollTimeoutMs: d.pollTimeoutMs,
+    findFaces: d.findFaces,
+    onFinished: (id) => engine.onLookFinished(id),
+  });
+  engine.looks = looks;
+  const accessories = new AccessoryService({ prisma: d.prisma, blobs, now: d.now });
   const orders = new OrderService({ prisma: d.prisma, blobs, engine, now: d.now });
   const auditor = d.auditor?.((status) => ledger.logGemini("interactions", status));
   const gate = new GarmentGate({ auditor, ledger });
   const garments = new GarmentService({ prisma: d.prisma, blobs, gate, now: d.now });
-  return { prisma: d.prisma, baseUrl, blobs, ledger, consent, engine, tryOns, orders, family, gate, garments, auditor };
+  return { prisma: d.prisma, baseUrl, blobs, ledger, consent, engine, tryOns, looks, orders, family, gate, garments, accessories, auditor };
 }
 
 export type App = ReturnType<typeof createApp>;
